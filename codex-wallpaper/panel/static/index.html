@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Codex 背景控制面板</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark">CW</span>
+        <div>
+          <h1>Codex 背景控制面板</h1>
+          <p id="app-status">正在检查应用状态...</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="restore-button" class="button button-quiet" type="button">恢复官方外观</button>
+        <button id="apply-button" class="button button-primary" type="button">应用背景</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="preview-column">
+        <div class="section-heading">
+          <div>
+            <h2>实时预览</h2>
+            <p>参数会立即反映到下面的窗口。</p>
+          </div>
+          <button id="reset-button" class="text-button" type="button">重置参数</button>
+        </div>
+
+        <div id="preview" class="preview-shell">
+          <div class="preview-window">
+            <aside class="preview-sidebar">
+              <div class="preview-logo"></div>
+              <div class="preview-nav-line is-active"></div>
+              <div class="preview-nav-line"></div>
+              <div class="preview-nav-line is-short"></div>
+              <div class="preview-sidebar-spacer"></div>
+              <div class="preview-profile"></div>
+            </aside>
+            <section class="preview-main">
+              <div class="preview-toolbar">
+                <span>新任务</span>
+                <span class="preview-toolbar-actions"></span>
+              </div>
+              <div class="preview-thread">
+                <div class="preview-message is-user">
+                  <span>帮我把这个页面的视觉层级整理一下。</span>
+                </div>
+                <div class="preview-message is-assistant">
+                  <span class="preview-response-line"></span>
+                  <span class="preview-response-line is-medium"></span>
+                  <span class="preview-response-line is-short"></span>
+                </div>
+              </div>
+              <div class="preview-dialog">
+                <strong>确认更改</strong>
+                <span>这个弹窗会跟随“弹窗透明度”滑块变化。</span>
+                <div class="preview-dialog-actions">
+                  <i></i>
+                  <b></b>
+                </div>
+              </div>
+              <div class="preview-composer">
+                <span>给 Codex 发送消息</span>
+                <div class="preview-composer-tools">
+                  <i></i>
+                  <b></b>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div class="output-block">
+          <div class="output-heading">
+            <span>运行输出</span>
+            <button id="clear-output-button" class="text-button" type="button">清空</button>
+          </div>
+          <pre id="output">等待操作...</pre>
+        </div>
+      </section>
+
+      <aside class="controls-column">
+        <section class="control-section upload-section">
+          <div class="section-heading compact">
+            <div>
+              <h2>背景图片</h2>
+              <p id="image-name">当前使用内置背景</p>
+            </div>
+          </div>
+          <label id="drop-zone" class="drop-zone" for="image-input">
+            <input id="image-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp">
+            <span class="drop-zone-title">拖入图片，或点击选择</span>
+            <span class="drop-zone-note">PNG、JPEG、WebP、GIF、BMP，最大 30 MB</span>
+          </label>
+        </section>
+
+        <section class="control-section">
+          <div class="section-heading compact">
+            <div>
+              <h2>背景适配</h2>
+              <p>调整裁切、焦点和画面强度。</p>
+            </div>
+          </div>
+          <div class="sliders">
+            <label class="slider-row" data-control="background-zoom">
+              <span>缩放</span>
+              <input id="background-zoom" type="range" min="100" max="150" step="1" value="100">
+              <output for="background-zoom">100%</output>
+            </label>
+            <label class="slider-row" data-control="background-x">
+              <span>水平焦点</span>
+              <input id="background-x" type="range" min="0" max="100" step="1" value="50">
+              <output for="background-x">50%</output>
+            </label>
+            <label class="slider-row" data-control="background-y">
+              <span>垂直焦点</span>
+              <input id="background-y" type="range" min="0" max="100" step="1" value="50">
+              <output for="background-y">50%</output>
+            </label>
+            <label class="slider-row" data-control="background-blur">
+              <span>模糊</span>
+              <input id="background-blur" type="range" min="0" max="30" step="1" value="0">
+              <output for="background-blur">0 px</output>
+            </label>
+            <label class="slider-row" data-control="background-dim">
+              <span>压暗</span>
+              <input id="background-dim" type="range" min="0" max="80" step="1" value="0">
+              <output for="background-dim">0%</output>
+            </label>
+          </div>
+        </section>
+
+        <section class="control-section">
+          <div class="section-heading compact">
+            <div>
+              <h2>元素透明度</h2>
+              <p>数值越低，背景透出越多。</p>
+            </div>
+          </div>
+          <div class="sliders">
+            <label class="slider-row" data-control="surface-main">
+              <span>主界面</span>
+              <input id="surface-main" type="range" min="0" max="100" step="1" value="35">
+              <output for="surface-main">35%</output>
+            </label>
+            <label class="slider-row" data-control="surface-sidebar">
+              <span>左侧栏</span>
+              <input id="surface-sidebar" type="range" min="0" max="100" step="1" value="45">
+              <output for="surface-sidebar">45%</output>
+            </label>
+            <label class="slider-row" data-control="surface-composer">
+              <span>输入框</span>
+              <input id="surface-composer" type="range" min="0" max="100" step="1" value="45">
+              <output for="surface-composer">45%</output>
+            </label>
+            <label class="slider-row" data-control="surface-dialog">
+              <span>弹窗</span>
+              <input id="surface-dialog" type="range" min="0" max="100" step="1" value="60">
+              <output for="surface-dialog">60%</output>
+            </label>
+          </div>
+        </section>
+
+        <div class="apply-note">
+          <span class="apply-note-dot"></span>
+          <p id="apply-note-text">应用后自动重启 ChatGPT，重新打开即可看到背景。</p>
+        </div>
+        <div class="restart-option">
+          <label>
+            <input id="auto-restart" type="checkbox" checked>
+            <span>应用成功后自动重启 ChatGPT</span>
+          </label>
+        </div>
+      </aside>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>
