@@ -3,7 +3,7 @@
 给 macOS 和 Windows 上的 Codex / ChatGPT 桌面客户端换一张永久背景壁纸，带一个可视化控制面板：
 上传图片、拖动滑块调参数、点“应用背景”，界面就换好了。
 
-当前发布版本：`1.1.1`
+当前发布版本：`1.1.2`
 
 壁纸被写进 App 自身的资源包里，所以重启电脑、退出重开都还在，不依赖任何常驻插件或
 DevTools 注入。
@@ -12,17 +12,18 @@ DevTools 注入。
 
 ## 安装
 
-从 [Releases](../../releases/latest) 下载明确标注版本的最终使用包，例如：
+从 [Releases](../../releases/latest) 按系统下载对应的最终使用包：
 
 ```text
-codex-wallpaper-1.1.1-windows-macos.zip
+macOS:   codex-wallpaper-1.1.2-macos.zip
+Windows: codex-wallpaper-1.1.2-windows.zip
 ```
 
-这个 ZIP 同时包含 macOS 和 Windows 启动文件，解压后按当前系统运行对应的启动器即可。
+macOS 和 Windows 使用不同的独立安装包，每个包只包含当前系统的启动文件。
 不要下载 GitHub 自动生成的 `Source code (zip)` 或 `Source code (tar.gz)`，那只是源码，
 不是可以直接使用的发布包。
 
-同时下载版本号相同的 `.sha256` 文件可以校验完整性。
+同时下载相同文件名的 `.sha256` 文件可以校验完整性。
 
 如果只是修改背景，不需要把文件夹放进技能目录。解压后直接双击对应的启动文件：
 
@@ -147,7 +148,12 @@ python3 -m unittest discover -s codex-wallpaper/tests -v
 ./scripts/build-release.sh 1.0.0
 ```
 
-产物在 `dist/`，包含 zip 和对应的 `sha256` 校验文件。
+产物在 `dist/`，包含 macOS、Windows 两个 zip 和各自对应的 `sha256` 校验文件：
+
+```text
+codex-wallpaper-1.1.2-macos.zip
+codex-wallpaper-1.1.2-windows.zip
+```
 
 ## 许可
 

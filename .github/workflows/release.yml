@@ -22,26 +22,50 @@ jobs:
       - name: Run tests
         run: python3 -m unittest discover -s codex-wallpaper/tests -v
 
-      - name: Build versioned archive
+      - name: Build platform archives
         run: |
+          set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
-          ARCHIVE="codex-wallpaper-${VERSION}-windows-macos.zip"
           rm -rf build dist
           mkdir -p build dist
-          cp -R codex-wallpaper build/
-          find build -name __pycache__ -type d -prune -exec rm -rf {} +
-          find build -name '*.pyc' -delete
-          (cd build && zip -qr "../dist/${ARCHIVE}" codex-wallpaper)
-          (cd dist && sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256")
+          for PLATFORM in macos windows; do
+            PACKAGE_ROOT="build/${PLATFORM}"
+            ARCHIVE="codex-wallpaper-${VERSION}-${PLATFORM}.zip"
+            mkdir -p "${PACKAGE_ROOT}"
+            cp -R codex-wallpaper "${PACKAGE_ROOT}/"
+            find "${PACKAGE_ROOT}" -name __pycache__ -type d -prune -exec rm -rf {} +
+            find "${PACKAGE_ROOT}" -name '*.pyc' -delete
+            if [ "${PLATFORM}" = "macos" ]; then
+              chmod +x "${PACKAGE_ROOT}/codex-wallpaper/open-control-panel.command"
+              rm -f "${PACKAGE_ROOT}/codex-wallpaper/open-control-panel.bat"
+            else
+              rm -f "${PACKAGE_ROOT}/codex-wallpaper/open-control-panel.command"
+            fi
+            (cd "${PACKAGE_ROOT}" && zip -qr "${GITHUB_WORKSPACE}/dist/${ARCHIVE}" codex-wallpaper)
+            (cd dist && sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256")
+          done
+
+      - name: Verify platform archive contents
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          MACOS_ARCHIVE="dist/codex-wallpaper-${VERSION}-macos.zip"
+          WINDOWS_ARCHIVE="dist/codex-wallpaper-${VERSION}-windows.zip"
+          unzip -l "${MACOS_ARCHIVE}" | grep -q 'open-control-panel.command'
+          ! unzip -l "${MACOS_ARCHIVE}" | grep -q 'open-control-panel.bat'
+          unzip -l "${WINDOWS_ARCHIVE}" | grep -q 'open-control-panel.bat'
+          ! unzip -l "${WINDOWS_ARCHIVE}" | grep -q 'open-control-panel.command'
 
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
-          ARCHIVE="codex-wallpaper-${VERSION}-windows-macos.zip"
           gh release create "${GITHUB_REF_NAME}" \
-            "dist/${ARCHIVE}" \
-            "dist/${ARCHIVE}.sha256" \
-            --title "Codex Wallpaper ${VERSION} - Windows + macOS" \
+            "dist/codex-wallpaper-${VERSION}-macos.zip" \
+            "dist/codex-wallpaper-${VERSION}-macos.zip.sha256" \
+            "dist/codex-wallpaper-${VERSION}-windows.zip" \
+            "dist/codex-wallpaper-${VERSION}-windows.zip.sha256" \
+            --title "Codex Wallpaper ${VERSION} - macOS / Windows" \
             --notes-file RELEASE_NOTES.md

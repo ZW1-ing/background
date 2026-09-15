@@ -1,5 +1,17 @@
 # 更新日志
 
+## 1.1.2
+
+拆分 macOS 和 Windows 发布包。
+
+- 不再发布同时包含两个系统启动文件的混合 ZIP。
+- 新增 `codex-wallpaper-1.1.2-macos.zip`，只包含
+  `open-control-panel.command`。
+- 新增 `codex-wallpaper-1.1.2-windows.zip`，只包含
+  `open-control-panel.bat`。
+- 两个平台包分别生成 `.sha256` 校验文件。
+- 发布流程增加压缩包内容检查，防止平台启动文件混入错误的包。
+
 ## 1.1.1
 
 改进控制面板的分发和启动体验。

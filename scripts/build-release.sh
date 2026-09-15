@@ -3,9 +3,9 @@
 #
 #   ./scripts/build-release.sh 1.0.0
 #
-# Produces dist/codex-wallpaper-<version>.zip plus a matching .sha256 file.
-# The zip contains a single top-level codex-wallpaper/ folder, so users can
-# unzip it straight into ~/.codex/skills/.
+# Produces separate macOS and Windows archives plus matching .sha256 files.
+# Each zip contains a single top-level codex-wallpaper/ folder with only the
+# launcher for its target platform.
 set -eu
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -28,9 +28,6 @@ if [[ ! -d "$SKILL_DIR" ]]; then
   exit 1
 fi
 
-NAME="codex-wallpaper-${VERSION}-windows-macos"
-ARCHIVE="$DIST_DIR/${NAME}.zip"
-
 print "正在校验技能内容…"
 python3 -m unittest discover -s "$SKILL_DIR/tests" >/dev/null
 print "  测试通过"
@@ -49,36 +46,54 @@ print "  启动脚本语法检查通过"
 }
 print "  Windows 启动脚本检查通过"
 
-# Build from a clean staging copy so stray local files never leak into a release.
+# Build from clean staging copies so stray local files never leak into a release.
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
-/usr/bin/rsync -a \
-  --exclude '__pycache__/' \
-  --exclude '*.pyc' \
-  --exclude '.DS_Store' \
-  "$SKILL_DIR" "$STAGE/"
-
-chmod +x "$STAGE/codex-wallpaper/open-control-panel.command"
-
 mkdir -p "$DIST_DIR"
-rm -f "$ARCHIVE" "${ARCHIVE}.sha256"
 
-print "正在打包 ${NAME}.zip …"
-(cd "$STAGE" && zip -qr "$ARCHIVE" codex-wallpaper)
+build_package() {
+  local PLATFORM="$1"
+  local REMOVE_LAUNCHER="$2"
+  local NAME="codex-wallpaper-${VERSION}-${PLATFORM}"
+  local ARCHIVE="$DIST_DIR/${NAME}.zip"
+  local PACKAGE_ROOT="$STAGE/$PLATFORM"
 
-(cd "$DIST_DIR" && shasum -a 256 "${NAME}.zip" > "${NAME}.zip.sha256")
+  mkdir -p "$PACKAGE_ROOT"
+  /usr/bin/rsync -a \
+    --exclude '__pycache__/' \
+    --exclude '*.pyc' \
+    --exclude '.DS_Store' \
+    "$SKILL_DIR" "$PACKAGE_ROOT/"
 
-SIZE="$(du -h "$ARCHIVE" | cut -f1 | tr -d ' ')"
-DIGEST="$(cut -d' ' -f1 < "${ARCHIVE}.sha256")"
+  if [[ "$PLATFORM" == "macos" ]]; then
+    chmod +x "$PACKAGE_ROOT/codex-wallpaper/open-control-panel.command"
+  fi
+  rm -f "$PACKAGE_ROOT/codex-wallpaper/$REMOVE_LAUNCHER"
+
+  rm -f "$ARCHIVE" "${ARCHIVE}.sha256"
+  print "正在打包 ${NAME}.zip …"
+  (cd "$PACKAGE_ROOT" && zip -qr "$ARCHIVE" codex-wallpaper)
+  (cd "$DIST_DIR" && shasum -a 256 "${NAME}.zip" > "${NAME}.zip.sha256")
+
+  local SIZE="$(du -h "$ARCHIVE" | cut -f1 | tr -d ' ')"
+  local DIGEST="$(cut -d' ' -f1 < "${ARCHIVE}.sha256")"
+
+  print "  文件:   $ARCHIVE"
+  print "  体积:   $SIZE"
+  print "  sha256: $DIGEST"
+}
+
+build_package "macos" "open-control-panel.bat"
+build_package "windows" "open-control-panel.command"
 
 print ""
-print "完成。"
-print "  文件:   $ARCHIVE"
-print "  体积:   $SIZE"
-print "  sha256: $DIGEST"
+print "完成。两个平台的发布包已生成到 $DIST_DIR"
 print ""
 print "发布到 GitHub:"
 print "  gh release create v${VERSION} \\"
-print "    \"$ARCHIVE\" \"${ARCHIVE}.sha256\" \\"
-print "    --title \"v${VERSION}\" --notes-file CHANGELOG.md"
+print "    \"$DIST_DIR/codex-wallpaper-${VERSION}-macos.zip\" \\"
+print "    \"$DIST_DIR/codex-wallpaper-${VERSION}-macos.zip.sha256\" \\"
+print "    \"$DIST_DIR/codex-wallpaper-${VERSION}-windows.zip\" \\"
+print "    \"$DIST_DIR/codex-wallpaper-${VERSION}-windows.zip.sha256\" \\"
+print "    --title \"Codex Wallpaper ${VERSION}\" --notes-file RELEASE_NOTES.md"
