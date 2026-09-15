@@ -28,7 +28,7 @@ if [[ ! -d "$SKILL_DIR" ]]; then
   exit 1
 fi
 
-NAME="codex-wallpaper-${VERSION}"
+NAME="codex-wallpaper-${VERSION}-windows-macos"
 ARCHIVE="$DIST_DIR/${NAME}.zip"
 
 print "正在校验技能内容…"

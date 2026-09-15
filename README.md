@@ -3,6 +3,8 @@
 给 macOS 和 Windows 上的 Codex / ChatGPT 桌面客户端换一张永久背景壁纸，带一个可视化控制面板：
 上传图片、拖动滑块调参数、点“应用背景”，界面就换好了。
 
+当前发布版本：`1.1.1`
+
 壁纸被写进 App 自身的资源包里，所以重启电脑、退出重开都还在，不依赖任何常驻插件或
 DevTools 注入。
 
@@ -10,7 +12,17 @@ DevTools 注入。
 
 ## 安装
 
-从 [Releases](../../releases) 下载 `codex-wallpaper-<版本号>.zip` 并解压。
+从 [Releases](../../releases/latest) 下载明确标注版本的最终使用包，例如：
+
+```text
+codex-wallpaper-1.1.1-windows-macos.zip
+```
+
+这个 ZIP 同时包含 macOS 和 Windows 启动文件，解压后按当前系统运行对应的启动器即可。
+不要下载 GitHub 自动生成的 `Source code (zip)` 或 `Source code (tar.gz)`，那只是源码，
+不是可以直接使用的发布包。
+
+同时下载版本号相同的 `.sha256` 文件可以校验完整性。
 
 如果只是修改背景，不需要把文件夹放进技能目录。解压后直接双击对应的启动文件：
 
