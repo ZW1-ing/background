@@ -1,5 +1,35 @@
 # 更新日志
 
+## 1.1.1
+
+改进控制面板的分发和启动体验。
+
+- 新增跨平台后台启动器，双击启动文件即可启动或复用控制面板。
+- 使用独立的 `/api/health` 健康检查，不再依赖是否检测到 ChatGPT/Codex 来判断面板是否启动。
+- 修复控制面板进程退出后 `127.0.0.1:8765` 书签无法访问时的恢复流程。
+- 下载后不需要填写 `app.asar` 路径；只有特殊安装目录才需要手动选择应用。
+
+## 1.1.0
+
+增加 Windows 10/11 支持。
+
+### Windows
+
+- 同一套控制面板同时支持 ChatGPT 和 Codex。
+- 自动扫描常见安装目录，也可以在面板里选择 `ChatGPT.exe` 或 `Codex.exe`。
+- `open-control-panel.bat` 自动请求 UAC 管理员权限，固定打开
+  `http://127.0.0.1:8765`。
+- Windows 使用 exe 旁边的 `resources\app.asar`，备份、恢复、重复应用和失败回滚
+  与 macOS 保持一致。
+- 大图使用浏览器预压缩，并提供 PowerShell/.NET 压缩回退，不依赖 Node。
+
+### 限制
+
+- 需要 Python 3。
+- 应用必须是普通桌面安装，并且存在可写的 `resources\app.asar`；受保护安装目录或
+  Microsoft Store 版本可能拒绝修改。
+- Windows 客户端升级后可能替换 `resources\app.asar`，需要重新应用背景。
+
 ## 1.0.0
 
 首个公开版本。
@@ -23,3 +53,10 @@
 - 每次应用都从干净备份重建，注入内容带标记并在重注入前剥离，重复应用不会让
   `app.asar` 越来越大。
 - 重新签名失败时自动回滚到备份，不会留下签名损坏的 App。
+- 透明度改为覆盖设计令牌（`--color-surface`、`--color-surface-elevated`、
+  `--app-color-background-*` 等），而不是逐个追组件类名。类名带哈希后缀、
+  每次发版都会变，而这些面板的底色最终都收敛到同一组令牌上，覆盖令牌能一次
+  盖住整个表面层，也不会因为版本更新而失效。
+- 同时保留弹窗浮层（`_Popover_`、`_Material_`）和输入框内层卡片
+  （`_expandedSurface_`、`_ComposerLayoutBody_`）的类名规则作为兜底：这些组件
+  不带 `role` 属性，只匹配 `[role="dialog"]` 的旧规则命中不到，会留下白块。

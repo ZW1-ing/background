@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Codex / ChatGPT Desktop - Permanent Background Wallpaper Patcher (macOS)
+Codex / ChatGPT Desktop - Permanent Background Wallpaper Patcher
 
 Rewrites the app's app.asar in place: the wallpaper is embedded once in each
 webview HTML shell and referenced from CSS through a custom property. No Node,
 no network, no temporary unpacking of the whole archive.
 
 Examples:
-    sudo python3 codex_theme_patcher.py                  # bundled default wallpaper
-    sudo python3 codex_theme_patcher.py -i ~/pic.png     # your own image
-    sudo python3 codex_theme_patcher.py -o 0.25          # lighter main-panel tint
+    python3 codex_theme_patcher.py                  # bundled default wallpaper
+    python3 codex_theme_patcher.py -i ~/pic.png     # your own image
+    python3 codex_theme_patcher.py -o 0.25          # lighter main-panel tint
     python3 codex_theme_patcher.py --status              # show current state
     sudo python3 codex_theme_patcher.py --restore        # official appearance
 """
@@ -28,9 +28,18 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_IMAGE = os.path.normpath(
-    os.path.join(HERE, os.pardir, "assets", "default-wallpaper.png")
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+from platform_support import (  # noqa: E402
+    app_package_path,
+    default_image_path,
+    detect_applications,
+    ensure_windows_patchable,
+    is_windows,
 )
+
+SKILL_ROOT = os.path.normpath(os.path.join(HERE, os.pardir))
+DEFAULT_IMAGE = str(default_image_path(SKILL_ROOT))
 
 START = b"/* >>> CODEX-WALLPAPER START (auto-generated) >>> */"
 END = b"/* <<< CODEX-WALLPAPER END <<< */"
@@ -104,6 +113,106 @@ def human(n):
         value /= 1024.0
 
 
+def prepare_image_with_powershell(image_path, original_size):
+    powershell = shutil.which("powershell.exe") or shutil.which("pwsh")
+    if not powershell:
+        raise RuntimeError(
+            "Image is too large for Chromium's CSS parser and PowerShell is unavailable."
+        )
+
+    script = r"""
+param(
+    [string]$InputPath,
+    [string]$OutputPath,
+    [int]$MaxDimension,
+    [int]$Quality
+)
+
+$ErrorActionPreference = "Stop"
+Add-Type -AssemblyName System.Drawing
+$source = [System.Drawing.Image]::FromFile($InputPath)
+try {
+    $longest = [double]([Math]::Max($source.Width, $source.Height))
+    $scale = [Math]::Min(1.0, $MaxDimension / $longest)
+    $width = [Math]::Max(1, [int][Math]::Round($source.Width * $scale))
+    $height = [Math]::Max(1, [int][Math]::Round($source.Height * $scale))
+    $bitmap = New-Object System.Drawing.Bitmap($width, $height)
+    try {
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        try {
+            $graphics.DrawImage($source, 0, 0, $width, $height)
+        } finally {
+            $graphics.Dispose()
+        }
+        $codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() |
+            Where-Object { $_.MimeType -eq "image/jpeg" }
+        $parameters = New-Object System.Drawing.Imaging.EncoderParameters(1)
+        $parameters.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter(
+            [System.Drawing.Imaging.Encoder]::Quality,
+            [long]$Quality
+        )
+        $bitmap.Save($OutputPath, $codec, $parameters)
+        $parameters.Dispose()
+    } finally {
+        $bitmap.Dispose()
+    }
+} finally {
+    $source.Dispose()
+}
+"""
+    script_fd, script_path = tempfile.mkstemp(
+        prefix=".codex-wallpaper-", suffix=".ps1"
+    )
+    os.close(script_fd)
+    output_fd, output_path = tempfile.mkstemp(
+        prefix=".codex-wallpaper-", suffix=".jpg"
+    )
+    os.close(output_fd)
+    os.remove(output_path)
+    keep_output = False
+    try:
+        with open(script_path, "w", encoding="utf-8") as handle:
+            handle.write(script)
+        for max_dimension, quality in IMAGE_OPTIMIZATION_STEPS:
+            if os.path.exists(output_path):
+                os.remove(output_path)
+            result = subprocess.run(
+                [
+                    powershell,
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    script_path,
+                    image_path,
+                    output_path,
+                    str(max_dimension),
+                    str(quality),
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            if result.returncode == 0 and os.path.exists(output_path):
+                with open(output_path, "rb") as handle:
+                    optimized = handle.read()
+                if len(optimized) <= MAX_EMBEDDED_IMAGE_BYTES:
+                    keep_output = True
+                    return PreparedImage(
+                        optimized,
+                        "image/jpeg",
+                        temp_path=output_path,
+                        original_size=original_size,
+                    )
+                os.remove(output_path)
+        raise RuntimeError("Could not compress the image to a safe CSS size.")
+    finally:
+        if os.path.exists(script_path):
+            os.remove(script_path)
+        if os.path.exists(output_path) and not keep_output:
+            os.remove(output_path)
+
+
 def prepare_image_for_embedding(image_path):
     with open(image_path, "rb") as handle:
         raw = handle.read()
@@ -113,6 +222,8 @@ def prepare_image_for_embedding(image_path):
         return PreparedImage(raw, mime, original_size=original_size)
 
     sips = shutil.which("sips")
+    if not sips and is_windows():
+        return prepare_image_with_powershell(image_path, original_size)
     if not sips:
         raise RuntimeError(
             "Image is too large for Chromium's CSS parser and sips is unavailable."
@@ -239,19 +350,19 @@ def load_config(path=None):
         return normalize_config(json.load(handle))
 
 
-def locate_app():
-    override = os.environ.get("CODEX_APP_PATH")
+def locate_app(override=None):
+    override = override or os.environ.get("CODEX_APP_PATH")
     if override:
-        return override if os.path.exists(override) else None
-    for candidate in ("/Applications/Codex.app", "/Applications/ChatGPT.app"):
-        if os.path.exists(candidate):
-            return candidate
-    if os.path.isdir("/Applications"):
-        for name in sorted(os.listdir("/Applications")):
-            low = name.lower()
-            if name.endswith(".app") and ("codex" in low or "chatgpt" in low):
-                return os.path.join("/Applications", name)
-    return None
+        item = _app_record(override)
+        return override if item else None
+    apps = detect_applications()
+    return apps[0]["executable"] if apps else None
+
+
+def _app_record(app_path):
+    from platform_support import application_from_path
+
+    return application_from_path(app_path)
 
 
 # --------------------------------------------------------------------------
@@ -506,10 +617,55 @@ def rules_css(config, image_value):
         "  background-color: rgba(15, 17, 26, "
         "var(--codex-wallpaper-composer-opacity)) !important;\n"
         "}\n"
-        "[role=\"dialog\"], [role=\"menu\"], [role=\"listbox\"] {\n"
+        # The composer's inner card paints its own surface colour, so the
+        # variable override above never reaches it.
+        "[class*=\"_ComposerLayoutBody_\"], [class*=\"_expandedSurface_\"], "
+        "[class*=\"_miniSurface_\"] {\n"
         "  background-color: rgba(15, 17, 26, "
+        "var(--codex-wallpaper-composer-opacity)) !important;\n"
+        "  backdrop-filter: none !important;\n"
+        "}\n"
+        # Popovers and the avatar material layer are styled by class, not by a
+        # role attribute, and default to a near-opaque light fill.
+        "[role=\"dialog\"], [role=\"menu\"], [role=\"listbox\"], "
+        "[role=\"tooltip\"], [class*=\"_Popover_\"], [class*=\"_Material_\"] {\n"
+        "  background: rgba(15, 17, 26, "
         "var(--codex-wallpaper-dialog-opacity)) !important;\n"
         "  backdrop-filter: blur(18px) !important;\n"
+        "}\n"
+        # Chasing individual class names does not scale: the bundle has
+        # hundreds of panels and the hashed names change on every release.
+        # Almost every opaque fill resolves through this small set of design
+        # tokens, so overriding them covers the whole surface layer at once.
+        ":root, [data-theme], [data-codex-window-type] {\n"
+        "  --color-surface: rgba(15, 17, 26, "
+        "var(--codex-wallpaper-main-opacity)) !important;\n"
+        "  --color-surface-secondary: rgba(15, 17, 26, "
+        "var(--codex-wallpaper-main-opacity)) !important;\n"
+        "  --color-surface-tertiary: rgba(15, 17, 26, "
+        "var(--codex-wallpaper-main-opacity)) !important;\n"
+        "  --app-color-background-surface: rgba(15, 17, 26, "
+        "var(--codex-wallpaper-main-opacity)) !important;\n"
+        "  --app-color-background-surface-under: rgba(15, 17, 26, "
+        "var(--codex-wallpaper-main-opacity)) !important;\n"
+        "  --app-color-background-editor-opaque: rgba(15, 17, 26, "
+        "var(--codex-wallpaper-main-opacity)) !important;\n"
+        "  --color-surface-elevated: rgba(15, 17, 26, "
+        "var(--codex-wallpaper-dialog-opacity)) !important;\n"
+        "  --color-surface-elevated-secondary: rgba(15, 17, 26, "
+        "var(--codex-wallpaper-dialog-opacity)) !important;\n"
+        "  --app-color-background-elevated-primary: rgba(15, 17, 26, "
+        "var(--codex-wallpaper-dialog-opacity)) !important;\n"
+        "  --app-color-background-elevated-primary-opaque: rgba(15, 17, 26, "
+        "var(--codex-wallpaper-dialog-opacity)) !important;\n"
+        "  --app-color-background-elevated-secondary: rgba(15, 17, 26, "
+        "var(--codex-wallpaper-dialog-opacity)) !important;\n"
+        "  --app-color-background-elevated-secondary-opaque: rgba(15, 17, 26, "
+        "var(--codex-wallpaper-dialog-opacity)) !important;\n"
+        "  --app-color-background-application-menu: rgba(15, 17, 26, "
+        "var(--codex-wallpaper-dialog-opacity)) !important;\n"
+        "  --composer-layout-surface-background: rgba(15, 17, 26, "
+        "var(--codex-wallpaper-composer-opacity)) !important;\n"
         "}\n"
         % (
             background["zoom"],
@@ -580,12 +736,10 @@ def ensure_backup(asar_path, bak_path):
 
 def preflight_write_access(app_path):
     """Return a description of the first unwritable spot, or None if we are fine."""
-    res_dir = os.path.join(app_path, "Contents", "Resources")
+    res_dir = os.path.dirname(app_package_path(app_path))
     probes = (
-        (res_dir, "Contents/Resources"),
-        (os.path.join(app_path, "Contents"), "Contents"),
-        (os.path.join(app_path, "Contents", "MacOS"), "Contents/MacOS"),
-        (os.path.join(app_path, "Contents", "_CodeSignature"), "Contents/_CodeSignature"),
+        (res_dir, "resources"),
+        (os.path.dirname(res_dir), "app directory"),
     )
     for path, label in probes:
         if os.path.exists(path) and not os.access(path, os.W_OK | os.X_OK):
@@ -596,12 +750,15 @@ def preflight_write_access(app_path):
             handle.write("probe")
         os.remove(probe)
     except OSError:
-        return "Contents/Resources (file creation)"
+        return "resources (file creation)"
     return None
 
 
 def resign(app_path):
     """Re-seal the bundle. chmod/xattr are best effort, signing must succeed."""
+    if is_windows():
+        print("Windows app.asar 不需要重新签名。")
+        return True
     print("Fixing permissions and re-signing (ad-hoc)...")
     for label, cmd in (
         ("chmod", "chmod -R 755 '%s'" % app_path),
@@ -626,6 +783,8 @@ def resign(app_path):
 
 def update_plist_integrity(app_path, header_bytes):
     """Keep ElectronAsarIntegrity in step with the header we just wrote."""
+    if is_windows():
+        return
     plist = os.path.join(app_path, "Contents", "Info.plist")
     if not os.path.exists(plist):
         return
@@ -663,8 +822,10 @@ def update_plist_integrity(app_path, header_bytes):
 
 
 def apply_wallpaper(app_path, image_path, config):
-    res_dir = os.path.join(app_path, "Contents", "Resources")
-    asar_path = os.path.join(res_dir, "app.asar")
+    if is_windows():
+        ensure_windows_patchable(app_path)
+    asar_path = app_package_path(app_path)
+    res_dir = os.path.dirname(asar_path)
     bak_path = asar_path + ".bak"
 
     if not os.path.exists(asar_path):
@@ -677,7 +838,10 @@ def apply_wallpaper(app_path, image_path, config):
     blocker = preflight_write_access(app_path)
     if blocker:
         print("Cannot write to %s." % blocker)
-        print("Re-run with sudo, or fix ownership of the app bundle.")
+        if is_windows():
+            print("请以管理员身份重新打开控制面板，或给应用目录授予写权限。")
+        else:
+            print("Re-run with sudo, or fix ownership of the app bundle.")
         sys.exit(1)
 
     ensure_backup(asar_path, bak_path)
@@ -775,7 +939,9 @@ def apply_wallpaper(app_path, image_path, config):
 
 
 def restore(app_path):
-    asar_path = os.path.join(app_path, "Contents", "Resources", "app.asar")
+    if is_windows():
+        ensure_windows_patchable(app_path)
+    asar_path = app_package_path(app_path)
     bak_path = asar_path + ".bak"
     if not os.path.exists(bak_path):
         print("No backup found at %s - nothing to restore." % bak_path)
@@ -784,7 +950,10 @@ def restore(app_path):
     blocker = preflight_write_access(app_path)
     if blocker:
         print("Cannot write to %s." % blocker)
-        print("Re-run with sudo, or fix ownership of the app bundle.")
+        if is_windows():
+            print("请以管理员身份重新打开控制面板，或给应用目录授予写权限。")
+        else:
+            print("Re-run with sudo, or fix ownership of the app bundle.")
         return False
     print("Restoring official app.asar from backup...")
     shutil.copy2(bak_path, asar_path)
@@ -794,8 +963,7 @@ def restore(app_path):
 
 
 def status(app_path):
-    res_dir = os.path.join(app_path, "Contents", "Resources")
-    asar_path = os.path.join(res_dir, "app.asar")
+    asar_path = app_package_path(app_path)
     bak_path = asar_path + ".bak"
     print("App:  %s" % app_path)
     if os.path.exists(asar_path):
@@ -830,14 +998,22 @@ def main():
         help="main panel tint, 0.0-1.0 (default 0.35)",
     )
     parser.add_argument("--config", help="JSON config generated by the control panel")
+    parser.add_argument(
+        "--app",
+        help="ChatGPT/Codex app bundle on macOS or executable path on Windows",
+    )
     parser.add_argument("--restore", action="store_true", help="restore the official appearance")
     parser.add_argument("--status", action="store_true", help="show patch state and exit")
     args = parser.parse_args()
 
-    app_path = locate_app()
+    app_path = locate_app(args.app)
     if not app_path:
-        print("No Codex.app or ChatGPT.app found in /Applications.")
-        print("Set CODEX_APP_PATH to point at your install.")
+        if is_windows():
+            print("No editable ChatGPT.exe or Codex.exe was found.")
+            print("Choose the executable in the control panel or set CODEX_APP_PATH.")
+        else:
+            print("No Codex.app or ChatGPT.app found in /Applications.")
+            print("Set CODEX_APP_PATH to point at your install.")
         sys.exit(1)
 
     if args.status:

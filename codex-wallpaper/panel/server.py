@@ -9,6 +9,7 @@ import json
 import mimetypes
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import threading
@@ -20,10 +21,24 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = pathlib.Path(__file__).resolve().parent
 SKILL_ROOT = HERE.parent
+SCRIPTS_ROOT = SKILL_ROOT / "scripts"
 STATIC_ROOT = HERE / "static"
 PATCHER = SKILL_ROOT / "scripts" / "codex_theme_patcher.py"
 DEFAULT_IMAGE = SKILL_ROOT / "assets" / "default-wallpaper.png"
-STATE_ROOT = pathlib.Path.home() / ".codex-wallpaper"
+if str(SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ROOT))
+from platform_support import (  # noqa: E402
+    app_package_path,
+    application_from_path,
+    default_image_path,
+    detect_applications,
+    is_windows,
+    platform_name,
+    state_root,
+)
+
+DEFAULT_IMAGE = default_image_path(SKILL_ROOT)
+STATE_ROOT = state_root()
 STATE_FILE = STATE_ROOT / "state.json"
 CONFIG_FILE = STATE_ROOT / "config.json"
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024
@@ -115,29 +130,138 @@ def run_patcher(arguments):
 
 
 def status_payload():
-    return_code, output = run_patcher(["--status"])
     state = read_json(STATE_FILE, {})
+    applications = detect_applications()
+    selected = selected_application(state=state, applications=applications)
+    applications = applications_with_selected(applications, selected)
+    arguments = []
+    if selected:
+        arguments.extend(["--app", selected["executable"]])
+    arguments.append("--status")
+    saved_path = state.get("appPath")
+    if saved_path and selected is None:
+        return_code = 1
+        output = (
+            "已保存的目标应用路径无效，请重新选择 ChatGPT.exe 或 Codex.exe。"
+        )
+    else:
+        return_code, output = run_patcher(arguments)
     return {
         "ok": return_code == 0,
         "status": output,
         "config": state.get("config"),
         "imageName": state.get("imageName"),
         "hasImage": current_image_path() is not None,
-        "defaultImageUrl": "/assets/default-wallpaper.png",
+        "defaultImageUrl": "/assets/default-wallpaper.jpg"
+        if is_windows()
+        else "/assets/default-wallpaper.png",
+        "platform": platform_name(),
+        "applications": applications,
+        "selectedApp": selected,
+        "canChooseApp": is_windows(),
     }
 
 
-def locate_app_path():
+def validate_app_path(app_path, platform_name=None):
+    return application_from_path(app_path, platform_name=platform_name)
+
+
+def selected_application(state=None, applications=None):
+    state = read_json(STATE_FILE, {}) if state is None else state
+    applications = (
+        detect_applications() if applications is None else applications
+    )
+    selected_path = state.get("appPath")
+    if selected_path:
+        selected = validate_app_path(selected_path)
+        return selected
     override = os.environ.get("CODEX_APP_PATH")
-    if override and os.path.exists(override):
-        return override
-    for candidate in ("/Applications/Codex.app", "/Applications/ChatGPT.app"):
-        if os.path.exists(candidate):
-            return candidate
-    return None
+    if override:
+        selected = validate_app_path(override)
+        if selected:
+            return selected
+    return applications[0] if applications else None
+
+
+def applications_with_selected(applications, selected):
+    """Keep a manually selected installation visible in the picker."""
+    result = list(applications or [])
+    if not selected:
+        return result
+    selected_key = os.path.normcase(selected["executable"])
+    if not any(
+        os.path.normcase(item.get("executable", "")) == selected_key
+        for item in result
+    ):
+        result.append(selected)
+    return result
+
+
+def locate_app_path():
+    selected = selected_application()
+    return selected["executable"] if selected else None
+
+
+def choose_app_path():
+    if not is_windows():
+        raise ValueError("当前系统不需要手动选择应用")
+    powershell = shutil.which("powershell.exe") or shutil.which("powershell")
+    if not powershell:
+        raise ValueError("找不到 Windows 文件选择器")
+    command = (
+        "Add-Type -AssemblyName System.Windows.Forms; "
+        "$dialog = New-Object System.Windows.Forms.OpenFileDialog; "
+        "$dialog.Filter = 'ChatGPT 或 Codex (*.exe)|ChatGPT.exe;Codex.exe'; "
+        "$dialog.Title = '选择 ChatGPT.exe 或 Codex.exe'; "
+        "if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) "
+        "{ [Console]::Write($dialog.FileName) }"
+    )
+    result = subprocess.run(
+        [powershell, "-NoProfile", "-STA", "-Command", command],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=120,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip()
+        raise ValueError(detail or "无法打开应用选择框")
+    path = result.stdout.strip()
+    if not path:
+        raise ValueError("没有选择应用")
+    return path
+
+
+def select_app(handler, app_path):
+    app = validate_app_path(app_path)
+    if not app:
+        raise ValueError(
+            "应用路径无效，请选择 ChatGPT.exe 或 Codex.exe，"
+            "并确认同目录存在 resources\\app.asar"
+        )
+    state = read_json(STATE_FILE, {})
+    state["appPath"] = app["executable"]
+    write_json(STATE_FILE, state)
+    handler.send_json({"ok": True, "app": app, "state": status_payload()})
 
 
 def app_is_running(app_path):
+    if is_windows():
+        executable = pathlib.Path(app_path).name
+        result = subprocess.run(
+            [
+                "tasklist",
+                "/FI",
+                "IMAGENAME eq %s" % executable,
+                "/FO",
+                "CSV",
+                "/NH",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        return result.returncode == 0 and executable.lower() in result.stdout.lower()
     app_name = pathlib.Path(app_path).stem
     executable = os.path.join(app_path, "Contents", "MacOS", app_name)
     result = subprocess.run(
@@ -161,6 +285,32 @@ def restart_app():
         return False, "没有找到 Codex 或 ChatGPT 应用。"
     app_name = pathlib.Path(app_path).stem
     output = []
+
+    if is_windows():
+        executable = pathlib.Path(app_path).name
+        if app_is_running(app_path):
+            result = subprocess.run(
+                ["taskkill", "/IM", executable, "/T", "/F"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            if result.returncode != 0:
+                detail = result.stderr.strip() or result.stdout.strip()
+                return False, detail or "无法自动退出目标应用。"
+            output.append("%s 已关闭。" % executable)
+            for _ in range(40):
+                if not app_is_running(app_path):
+                    break
+                time.sleep(0.25)
+            else:
+                return False, "目标应用仍在运行，请手动退出后重新打开。"
+        try:
+            subprocess.Popen([app_path], cwd=str(pathlib.Path(app_path).parent))
+        except OSError as exc:
+            return False, str(exc)
+        output.append("%s 已重新打开。" % executable)
+        return True, "\n".join(output)
 
     if app_is_running(app_path):
         result = subprocess.run(
@@ -238,11 +388,20 @@ class PanelHandler(BaseHTTPRequestHandler):
         route = self.path.split("?", 1)[0]
         if route == "/":
             return self.serve_static(STATIC_ROOT / "index.html")
+        if route == "/api/health":
+            return self.send_json(
+                {
+                    "ok": True,
+                    "service": "codex-wallpaper-panel",
+                }
+            )
         if route == "/styles.css":
             return self.serve_static(STATIC_ROOT / "styles.css")
         if route == "/app.js":
             return self.serve_static(STATIC_ROOT / "app.js")
         if route == "/assets/default-wallpaper.png":
+            return self.serve_static(DEFAULT_IMAGE, cache_control="public, max-age=3600")
+        if route == "/assets/default-wallpaper.jpg":
             return self.serve_static(DEFAULT_IMAGE, cache_control="public, max-age=3600")
         if route == "/api/current-image":
             image_path = current_image_path()
@@ -252,6 +411,17 @@ class PanelHandler(BaseHTTPRequestHandler):
             return self.serve_static(image_path, content_type=content_type)
         if route == "/api/state":
             return self.send_json(status_payload())
+        if route == "/api/apps":
+            applications = detect_applications()
+            selected = selected_application(applications=applications)
+            return self.send_json(
+                {
+                    "ok": True,
+                    "applications": applications_with_selected(applications, selected),
+                    "selectedApp": selected,
+                    "canChooseApp": is_windows(),
+                }
+            )
         self.send_json({"ok": False, "error": "Not found"}, HTTPStatus.NOT_FOUND)
 
     def do_POST(self):
@@ -264,6 +434,9 @@ class PanelHandler(BaseHTTPRequestHandler):
                 return self.restore_wallpaper()
             if route == "/api/restart":
                 return self.restart_wallpaper()
+            if route == "/api/select-app":
+                app_path = body.get("path") or choose_app_path()
+                return select_app(self, app_path)
         except ValueError as exc:
             return self.send_json(
                 {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST
@@ -280,6 +453,17 @@ class PanelHandler(BaseHTTPRequestHandler):
         self.send_json({"ok": False, "error": "Not found"}, HTTPStatus.NOT_FOUND)
 
     def apply_wallpaper(self, body):
+        target = locate_app_path()
+        saved_path = read_json(STATE_FILE, {}).get("appPath")
+        if is_windows() and not target:
+            if saved_path:
+                raise ValueError(
+                    "已保存的目标应用路径无效，请重新选择 ChatGPT.exe 或 Codex.exe。"
+                )
+            raise ValueError(
+                "没有找到可修改的 ChatGPT.exe 或 Codex.exe，请先选择应用。"
+            )
+
         image_data = body.pop("imageData", None)
         config = body.get("config")
         if not isinstance(config, dict):
@@ -302,11 +486,16 @@ class PanelHandler(BaseHTTPRequestHandler):
             "imageName": body.get("imageName"),
             "imagePath": str(image_path) if image_path else None,
         }
+        previous_state = read_json(STATE_FILE, {})
+        if previous_state.get("appPath"):
+            state["appPath"] = previous_state["appPath"]
         write_json(STATE_FILE, state)
 
         arguments = ["--config", str(CONFIG_FILE)]
         if image_path is not None:
             arguments.extend(["--image", str(image_path)])
+        if target:
+            arguments = ["--app", target, *arguments]
         return_code, output = run_patcher(arguments)
         payload = {
             "ok": return_code == 0,
@@ -319,7 +508,21 @@ class PanelHandler(BaseHTTPRequestHandler):
         self.send_json(payload)
 
     def restore_wallpaper(self):
-        return_code, output = run_patcher(["--restore"])
+        target = locate_app_path()
+        saved_path = read_json(STATE_FILE, {}).get("appPath")
+        if is_windows() and not target:
+            if saved_path:
+                raise ValueError(
+                    "已保存的目标应用路径无效，请重新选择 ChatGPT.exe 或 Codex.exe。"
+                )
+            raise ValueError(
+                "没有找到可修改的 ChatGPT.exe 或 Codex.exe，请先选择应用。"
+            )
+
+        arguments = ["--restore"]
+        if target:
+            arguments = ["--app", target, *arguments]
+        return_code, output = run_patcher(arguments)
         payload = {
             "ok": return_code == 0,
             "output": output,

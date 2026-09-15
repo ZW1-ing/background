@@ -2,6 +2,7 @@ import importlib.util
 import pathlib
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -93,6 +94,18 @@ class CssGenerationTests(unittest.TestCase):
         self.assertIn('[class*="_LeftPanel_"]', css)
         self.assertIn('[class*="_ComposerLayoutRoot_"]', css)
         self.assertIn('[role="dialog"]', css)
+        # The composer's inner card and the popover shell paint their own
+        # surface colours, so they need explicit selectors of their own.
+        self.assertIn('[class*="_expandedSurface_"]', css)
+        self.assertIn('[class*="_ComposerLayoutBody_"]', css)
+        self.assertIn('[class*="_Popover_"]', css)
+        # Class names are hashed per release, so the design tokens they read
+        # from are the durable place to force transparency.
+        self.assertIn("--color-surface:", css)
+        self.assertIn("--color-surface-elevated:", css)
+        self.assertIn("--app-color-background-surface:", css)
+        self.assertIn("--app-color-background-elevated-primary:", css)
+        self.assertIn("--app-color-background-application-menu:", css)
 
     def test_patch_html_injects_single_background_layer(self):
         html = b"<html><body><div id=\"root\"></div></body></html>"
@@ -138,6 +151,56 @@ class ImagePreparationTests(unittest.TestCase):
             self.assertIsNotNone(prepared.temp_path)
         finally:
             prepared.cleanup()
+
+
+class WindowsPathTests(unittest.TestCase):
+    def test_patcher_resolves_windows_executable_to_resources_asar(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app_dir = pathlib.Path(temp_dir) / "app-1.2.3"
+            executable = app_dir / "ChatGPT.exe"
+            asar = app_dir / "resources" / "app.asar"
+            executable.parent.mkdir(parents=True)
+            asar.parent.mkdir()
+            executable.write_bytes(b"exe")
+            asar.write_bytes(b"asar")
+
+            result = PATCHER.app_package_path(
+                str(executable),
+                platform_name="win32",
+            )
+
+        self.assertEqual(result, str(asar))
+
+    def test_windows_large_image_uses_powershell_when_sips_is_unavailable(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = pathlib.Path(temp_dir) / "large.png"
+            image_path.write_bytes(b"large-image-data")
+            def fake_run(command, **kwargs):
+                pathlib.Path(command[-3]).write_bytes(b"small-jpeg")
+                return type("Result", (), {"returncode": 0, "stderr": ""})()
+
+            with mock.patch.object(
+                PATCHER, "MAX_EMBEDDED_IMAGE_BYTES", 10
+            ), mock.patch.object(
+                PATCHER, "is_windows", return_value=True
+            ), mock.patch.object(
+                PATCHER.shutil,
+                "which",
+                side_effect=lambda name: (
+                    "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+                    if name == "powershell.exe"
+                    else None
+                ),
+            ), mock.patch.object(
+                PATCHER.subprocess, "run", side_effect=fake_run
+            ):
+                prepared = PATCHER.prepare_image_for_embedding(str(image_path))
+
+            try:
+                self.assertEqual(prepared.mime, "image/jpeg")
+                self.assertEqual(prepared.data, b"small-jpeg")
+            finally:
+                prepared.cleanup()
 
 
 if __name__ == "__main__":

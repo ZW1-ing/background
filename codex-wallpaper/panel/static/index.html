@@ -85,6 +85,21 @@
       </section>
 
       <aside class="controls-column">
+        <section id="app-section" class="control-section app-section" hidden>
+          <div class="section-heading compact">
+            <div>
+              <h2>目标应用</h2>
+              <p id="app-target-status">正在检测 ChatGPT 和 Codex...</p>
+            </div>
+            <button id="refresh-apps-button" class="text-button" type="button">重新检测</button>
+          </div>
+          <div class="app-picker-row">
+            <select id="app-select" aria-label="目标应用"></select>
+            <button id="choose-app-button" class="button button-quiet" type="button">选择应用</button>
+          </div>
+          <p class="app-help">Windows 需要以管理员身份运行控制面板，才能修改应用资源。</p>
+        </section>
+
         <section class="control-section upload-section">
           <div class="section-heading compact">
             <div>
@@ -168,12 +183,12 @@
 
         <div class="apply-note">
           <span class="apply-note-dot"></span>
-          <p id="apply-note-text">应用后自动重启 ChatGPT，重新打开即可看到背景。</p>
+          <p id="apply-note-text">应用后自动重启目标应用，重新打开即可看到背景。</p>
         </div>
         <div class="restart-option">
           <label>
             <input id="auto-restart" type="checkbox" checked>
-            <span>应用成功后自动重启 ChatGPT</span>
+            <span>应用成功后自动重启目标应用</span>
           </label>
         </div>
       </aside>

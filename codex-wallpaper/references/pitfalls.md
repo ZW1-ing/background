@@ -165,3 +165,16 @@ python3 codex_theme_patcher.py --status
 
 Reports the app path, whether `app.asar` carries a patch, whether the backup is
 still pristine, and whether the bundled wallpaper is present.
+
+## The control panel URL cannot be opened
+
+**Cause:** `http://127.0.0.1:8765/` is a local page served by a process. The
+address can remain in browser history after that process exits, but the browser
+cannot start it by itself.
+
+**Fix:** double-click `open-control-panel.command` on macOS or
+`open-control-panel.bat` on Windows. The launcher uses `/api/health` to check
+the service, reuses an existing healthy process, or starts a detached one and
+then opens the browser. It writes startup errors to
+`~/.codex-wallpaper/panel.log` on macOS or
+`%APPDATA%\\codex-wallpaper\\panel.log` on Windows.

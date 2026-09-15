@@ -1,13 +1,13 @@
 ---
 name: codex-wallpaper
-description: Permanently change or restore the background wallpaper of the Codex / ChatGPT desktop app on macOS by patching its app.asar bundle. Use when the user asks to customize, set, change, reset, or fix the desktop app background image. Requires macOS; needs sudo only when the app bundle is not owned by your user. Not for other Electron apps.
+description: Permanently change or restore the background wallpaper of the Codex / ChatGPT desktop app on macOS or Windows by patching its app.asar bundle. Use when the user asks to customize, set, change, reset, or fix the desktop app background image. Supports ChatGPT and Codex desktop installs; not for other Electron apps.
 metadata:
   short-description: Set a permanent wallpaper on the Codex desktop app
 ---
 
 # Codex Wallpaper
 
-Permanently sets a background image on the Codex / ChatGPT macOS desktop client.
+Permanently sets a background image on the Codex / ChatGPT macOS or Windows desktop client.
 The wallpaper is written into the app bundle itself, so it survives restarts and
 does not depend on DevTools, a running helper, or injected memory state.
 
@@ -17,7 +17,7 @@ does not depend on DevTools, a running helper, or injected memory state.
 SKILL=~/.codex/skills/codex-wallpaper
 
 # Open the visual control panel (recommended)
-python3 $SKILL/panel/server.py
+python3 $SKILL/panel/launcher.py
 
 # Apply the bundled default wallpaper
 python3 $SKILL/scripts/codex_theme_patcher.py
@@ -32,16 +32,22 @@ python3 $SKILL/scripts/codex_theme_patcher.py --status
 python3 $SKILL/scripts/codex_theme_patcher.py --restore
 ```
 
-You can also double-click `open-control-panel.command` from Finder. This is the
-recommended way for non-technical users. It runs in Terminal on purpose: macOS
-only lets a process rewrite another app's bundle when the process inherits the
-"App Management" grant, which Terminal (but not a background daemon) has. The
-panel is detached with `nohup`, so closing the Terminal window does not stop it,
-and clicking the file again just reopens the page.
+On macOS, double-click `open-control-panel.command` from Finder. It runs in
+Terminal on purpose because macOS only lets a process rewrite another app's
+bundle when the process inherits the "App Management" grant. The launcher
+starts the panel in an independent session, so closing the Terminal window
+does not stop it. If the bookmarked URL is unavailable later, double-click
+the command file again; it will restart or reuse the panel automatically.
+
+On Windows, double-click `open-control-panel.bat`. It requests UAC administrator
+permission and starts the same local panel in an independent process. The panel
+detects ChatGPT.exe and Codex.exe automatically and provides a file picker if
+detection misses an installation.
 
 The panel always lives at `http://127.0.0.1:8765`; it never silently moves to
-another port, so a bookmarked URL keeps working. If the port is already taken,
-the launcher reports it instead of starting a second copy.
+another port, so a bookmarked URL keeps working while the panel process is
+running. If the port is already taken, the launcher checks the panel health
+endpoint and reuses a working copy instead of starting a second copy.
 
 The panel lets the user upload an image, preview the result, and adjust:
 
@@ -49,34 +55,37 @@ The panel lets the user upload an image, preview the result, and adjust:
 - main panel, left sidebar, composer, and dialog transparency
 
 The panel stores the last settings and uploaded image under
-`~/.codex-wallpaper/`, and writes its log to `~/.codex-wallpaper/panel.log`.
+`~/.codex-wallpaper/` on macOS and `%APPDATA%\codex-wallpaper\` on Windows,
+and writes `panel.log` in that directory.
 Apply and restore still use the same patcher and `app.asar.bak` safety flow
 described below.
 
-Before embedding, images larger than 1.1 MB are resized and converted to JPEG
-with macOS `sips`. Chromium drops CSS rules whose value is roughly 3 MB or
-larger, so this optimization is required for large PNG wallpapers. The original
-uploaded file is never overwritten.
+Before embedding, images larger than 1.1 MB are resized and converted to JPEG.
+macOS uses `sips`; Windows uses PowerShell/.NET as a command-line fallback, and
+the browser also prepares large uploads before sending them. Chromium drops CSS
+rules whose value is roughly 3 MB or larger, so this optimization is required
+for large wallpapers. The original uploaded file is never overwritten.
 
 An app dragged into `/Applications` by the user is normally owned by that user,
-so no `sudo` is needed: replacing `app.asar` only requires write access to the
-containing folder, and re-signing only touches files the user owns. Add `sudo`
-only if the script reports that the bundle is not writable. Before touching
-anything it checks write access and refuses to start otherwise, so a
-permission problem never leaves the app half-patched.
+so no `sudo` is needed on macOS. Windows uses UAC elevation from the launcher.
+Before touching anything the patcher checks write access and refuses to start
+otherwise, so a permission problem never leaves the app half-patched.
 
-Options: `-i/--image` (defaults to `assets/default-wallpaper.png`), `-o/--opacity`
+Options: `-i/--image` (defaults to the bundled wallpaper), `-o/--opacity`
 0.0-1.0 for the main panel tint (default 0.35), `--config` for a JSON file
-generated by the control panel, `--restore`, and `--status`.
+generated by the control panel, `--app` for an app bundle or executable path,
+`--restore`, and `--status`.
 
 The app is located automatically at `/Applications/Codex.app` or
-`/Applications/ChatGPT.app`. Override with `CODEX_APP_PATH`. Quit and reopen the
-app after patching.
+`/Applications/ChatGPT.app` on macOS, and in common Windows install directories
+for `Codex.exe` and `ChatGPT.exe`. Override with `CODEX_APP_PATH`, or use
+`--app`. Quit and reopen the app after patching.
 
 ## How It Works
 
-1. Backs up the untouched `Contents/Resources/app.asar` to `app.asar.bak`
-   (created once, never overwritten).
+1. Backs up the untouched `Contents/Resources/app.asar` on macOS, or
+   `resources/app.asar` next to the selected Windows executable, to
+   `app.asar.bak` (created once, never overwritten).
 2. Reads the archive header directly, then streams a new `app.asar`: unchanged
    files are copied byte for byte, changed files are replaced in place. The
    whole archive is never unpacked to disk.
@@ -86,9 +95,10 @@ app after patching.
    `webview/detached-window.html`).
 4. Appends a small `!important` rule to every `*.css` file under the webview,
    referencing that custom property.
-5. Recomputes per-file SHA256 integrity for the files it touched, refreshes the
-   `ElectronAsarIntegrity` hash in `Info.plist`, then fixes permissions, clears
-   extended attributes, and ad-hoc signs the bundle.
+5. Recomputes per-file SHA256 integrity for the files it touched. On macOS it
+   refreshes the `ElectronAsarIntegrity` hash in `Info.plist`, fixes
+   permissions, clears extended attributes, and ad-hoc signs the bundle. On
+   Windows it leaves the executable signature untouched.
 
 If re-signing fails, the script puts the pristine `app.asar` back and re-signs
 that, rather than leaving a bundle with a broken signature.
@@ -100,7 +110,7 @@ markers that are stripped before re-injecting. Both properties keep repeated
 runs from stacking payloads and growing the archive.
 
 Only Python 3 and the standard library are required, so this works offline with
-no Node toolchain.
+no Node toolchain. Windows large-image fallback uses built-in PowerShell/.NET.
 
 ## Constraints Worth Knowing
 

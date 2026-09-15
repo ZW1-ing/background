@@ -26,6 +26,11 @@ const clearOutputButton = document.querySelector("#clear-output-button");
 const autoRestart = document.querySelector("#auto-restart");
 const output = document.querySelector("#output");
 const toast = document.querySelector("#toast");
+const appSection = document.querySelector("#app-section");
+const appTargetStatus = document.querySelector("#app-target-status");
+const appSelect = document.querySelector("#app-select");
+const chooseAppButton = document.querySelector("#choose-app-button");
+const refreshAppsButton = document.querySelector("#refresh-apps-button");
 
 let uploadedImageDataUri = null;
 let uploadedObjectUrl = null;
@@ -141,6 +146,9 @@ function renderPreview() {
 function setBusy(isBusy) {
   applyButton.disabled = isBusy;
   restoreButton.disabled = isBusy;
+  chooseAppButton.disabled = isBusy;
+  refreshAppsButton.disabled = isBusy;
+  appSelect.disabled = isBusy;
   applyButton.textContent = isBusy ? "正在应用..." : "应用背景";
 }
 
@@ -158,6 +166,10 @@ async function requestJson(url, payload) {
 }
 
 function describeStatus(state) {
+  if (state?.selectedApp) {
+    appStatus.textContent = `已连接 ${state.selectedApp.name}`;
+    return;
+  }
   const status = state?.status || "";
   const match = status.match(/^App:\s+(.+)$/m);
   if (match) {
@@ -168,20 +180,62 @@ function describeStatus(state) {
   appStatus.textContent = "未检测到 Codex 或 ChatGPT 应用";
 }
 
+function selectedAppName() {
+  return appSelect.selectedOptions?.[0]?.textContent?.split(" · ")[0] || "目标应用";
+}
+
+function renderApplicationControls(state) {
+  if (!state?.canChooseApp) {
+    appSection.hidden = true;
+    return;
+  }
+
+  appSection.hidden = false;
+  const applications = state.applications || [];
+  appSelect.replaceChildren();
+  if (!applications.length) {
+    const option = new Option("未检测到 ChatGPT 或 Codex", "");
+    option.disabled = true;
+    option.selected = true;
+    appSelect.add(option);
+    appTargetStatus.textContent = "请选择已安装的 ChatGPT.exe 或 Codex.exe";
+    return;
+  }
+
+  for (const application of applications) {
+    const option = new Option(
+      `${application.name} · ${application.executable}`,
+      application.executable
+    );
+    option.title = application.executable;
+    option.selected =
+      application.executable === state.selectedApp?.executable;
+    appSelect.add(option);
+  }
+  appTargetStatus.textContent = state.selectedApp
+    ? `当前使用 ${state.selectedApp.name}`
+    : "请选择要修改的应用";
+}
+
+function applyState(state) {
+  applyConfigToControls(state.config);
+  describeStatus(state);
+  renderApplicationControls(state);
+  if (state.hasImage) {
+    setPreviewImage(`/api/current-image?t=${Date.now()}`);
+    imageName.textContent = state.imageName || "已保存的自定义背景";
+  } else {
+    setPreviewImage(state.defaultImageUrl);
+    imageName.textContent = "当前使用内置背景";
+  }
+  setOutput(state.status || "等待操作...");
+}
+
 async function loadState() {
   try {
     const response = await fetch("/api/state");
     const state = await response.json();
-    applyConfigToControls(state.config);
-    describeStatus(state);
-    if (state.hasImage) {
-      setPreviewImage(`/api/current-image?t=${Date.now()}`);
-      imageName.textContent = state.imageName || "已保存的自定义背景";
-    } else {
-      setPreviewImage(state.defaultImageUrl);
-      imageName.textContent = "当前使用内置背景";
-    }
-    setOutput(state.status || "等待操作...");
+    applyState(state);
   } catch (error) {
     appStatus.textContent = "无法读取应用状态";
     setOutput(String(error));
@@ -195,6 +249,50 @@ function readFileAsDataUri(file) {
     reader.onerror = () => reject(new Error("无法读取图片"));
     reader.readAsDataURL(file);
   });
+}
+
+async function prepareImageData(file) {
+  const limit = 1100 * 1024;
+  const original = await readFileAsDataUri(file);
+  if (file.size <= limit) {
+    return original;
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.src = objectUrl;
+    await image.decode();
+    const longest = Math.max(image.naturalWidth, image.naturalHeight);
+    const steps = [
+      [2560, 0.82],
+      [1920, 0.72],
+      [1600, 0.64],
+      [1280, 0.58],
+    ];
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("浏览器不支持图片压缩");
+    }
+    for (const [maxDimension, quality] of steps) {
+      const scale = Math.min(1, maxDimension / longest);
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const compressed = canvas.toDataURL("image/jpeg", quality);
+      const payloadBytes = Math.ceil(
+        ((compressed.length - compressed.indexOf(",") - 1) * 3) / 4
+      );
+      if (payloadBytes <= limit) {
+        return compressed;
+      }
+    }
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+  throw new Error("图片压缩后仍然过大，请选择较小的图片");
 }
 
 async function handleImage(file) {
@@ -213,7 +311,7 @@ async function handleImage(file) {
     showToast("图片不能超过 30 MB", true);
     return;
   }
-  uploadedImageDataUri = await readFileAsDataUri(file);
+  uploadedImageDataUri = await prepareImageData(file);
   if (uploadedObjectUrl) {
     URL.revokeObjectURL(uploadedObjectUrl);
   }
@@ -264,22 +362,79 @@ applyButton.addEventListener("click", async () => {
       imageName: imageName.textContent,
       config: configFromControls(),
     });
+    applyState(data.state);
     setOutput(data.output);
     if (autoRestart.checked) {
-      setOutput(`${data.output}\n\n正在重启 ChatGPT...`);
+      const appName = data.state?.selectedApp?.name || selectedAppName();
+      setOutput(`${data.output}\n\n正在重启 ${appName}...`);
       try {
         const restartData = await requestJson("/api/restart", {});
         setOutput(`${data.output}\n\n${restartData.output}`);
-        showToast("背景已应用，ChatGPT 已重新打开");
+        showToast(`背景已应用，${appName} 已重新打开`);
       } catch (restartError) {
         setOutput(`${data.output}\n\n${restartError.message}`);
-        showToast("背景已应用，但自动重启失败，请手动重启 ChatGPT", true);
+        showToast(`背景已应用，但自动重启失败，请手动重启 ${appName}`, true);
       }
     } else {
-      showToast("背景已应用；请完全退出并重新打开 ChatGPT 后查看");
+      showToast("背景已应用；请完全退出并重新打开目标应用后查看");
     }
   } catch (error) {
     setOutput(error.message);
+    showToast(error.message, true);
+  } finally {
+    setBusy(false);
+  }
+});
+
+async function refreshApplications(showMessage = false) {
+  const response = await fetch("/api/apps");
+  const state = await response.json();
+  if (!response.ok || !state.ok) {
+    throw new Error(state.error || "无法检测应用");
+  }
+  renderApplicationControls(state);
+  describeStatus(state);
+  if (showMessage) {
+    showToast("应用列表已刷新");
+  }
+}
+
+appSelect.addEventListener("change", async () => {
+  if (!appSelect.value) {
+    return;
+  }
+  setBusy(true);
+  try {
+    const data = await requestJson("/api/select-app", {
+      path: appSelect.value,
+    });
+    applyState(data.state);
+    showToast(`已选择 ${data.app.name}`);
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    setBusy(false);
+  }
+});
+
+chooseAppButton.addEventListener("click", async () => {
+  setBusy(true);
+  try {
+    const data = await requestJson("/api/select-app", {});
+    applyState(data.state);
+    showToast(`已选择 ${data.app.name}`);
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    setBusy(false);
+  }
+});
+
+refreshAppsButton.addEventListener("click", async () => {
+  setBusy(true);
+  try {
+    await refreshApplications(true);
+  } catch (error) {
     showToast(error.message, true);
   } finally {
     setBusy(false);

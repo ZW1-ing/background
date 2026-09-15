@@ -1,24 +1,37 @@
 # Codex Wallpaper
 
-给 macOS 上的 Codex / ChatGPT 桌面客户端换一张永久背景壁纸，带一个可视化控制面板：
+给 macOS 和 Windows 上的 Codex / ChatGPT 桌面客户端换一张永久背景壁纸，带一个可视化控制面板：
 上传图片、拖动滑块调参数、点“应用背景”，界面就换好了。
 
 壁纸被写进 App 自身的资源包里，所以重启电脑、退出重开都还在，不依赖任何常驻插件或
 DevTools 注入。
 
-支持 macOS。只需要系统自带的 Python 3，不需要 Node、不需要联网。
+支持 macOS 和 Windows 10/11。只需要 Python 3，不需要 Node、不需要联网。
 
 ## 安装
 
-从 [Releases](../../releases) 下载 `codex-wallpaper-<版本号>.zip` 并解压，
-把 `codex-wallpaper` 文件夹放进 Codex 的技能目录：
+从 [Releases](../../releases) 下载 `codex-wallpaper-<版本号>.zip` 并解压。
+
+如果只是修改背景，不需要把文件夹放进技能目录。解压后直接双击对应的启动文件：
+
+```bash
+# macOS：双击 codex-wallpaper/open-control-panel.command
+# Windows：双击 codex-wallpaper\open-control-panel.bat
+```
+
+如果还希望在 Codex 中作为 Skill 使用，macOS 用户再把文件夹放进技能目录：
 
 ```bash
 mkdir -p ~/.codex/skills
-mv ~/Downloads/codex-wallpaper ~/.codex/skills/
+cp -R ~/Downloads/codex-wallpaper ~/.codex/skills/
 ```
 
-也可以直接克隆：
+Windows 会弹出 UAC 管理员授权，这是为了修改桌面客户端自己的
+`resources\app.asar`。控制面板会自动检测 ChatGPT 和 Codex，不需要手动填写
+`app.asar` 路径；只有特殊安装目录没有被检测到时，才需要在面板里选择对应的
+`ChatGPT.exe` 或 `Codex.exe`。
+
+macOS 用户也可以直接克隆仓库：
 
 ```bash
 git clone https://github.com/<你的用户名>/codex-wallpaper.git
@@ -27,14 +40,19 @@ cp -R codex-wallpaper/codex-wallpaper ~/.codex/skills/
 
 ## 使用
 
-在 Finder 里双击 `open-control-panel.command`，浏览器会打开控制面板：
+在 macOS Finder 里双击 `open-control-panel.command`，浏览器会打开控制面板：
 
 ```
 http://127.0.0.1:8765
 ```
 
-在面板里上传图片、调整参数，然后点“应用背景”。默认勾选了“应用后自动重启
-ChatGPT”，所以点完稍等一下就能看到新背景。
+Windows 用户双击 `open-control-panel.bat`；macOS 用户双击
+`open-control-panel.command`。启动文件会自动启动后台面板并打开浏览器，已运行时会直接
+复用，不需要先运行 `server.py`。在面板里上传图片、调整参数，然后点“应用背景”。
+默认勾选了“应用后自动重启目标应用”，所以点完稍等一下就能看到新背景。
+
+如果之前保存的地址打不开，不要只刷新浏览器书签，重新双击一次对应的启动文件即可；
+启动文件会自动检查并恢复控制面板服务。
 
 面板可调的参数：
 
@@ -42,15 +60,28 @@ ChatGPT”，所以点完稍等一下就能看到新背景。
 - 透明度：主面板、左侧栏、输入框、弹窗
 
 首次运行时 macOS 可能会弹窗询问“终端”要控制 ChatGPT 的权限，需要点允许，
-自动重启才能生效。
+自动重启才能生效。Windows 首次运行会弹出 UAC，需要允许控制面板以管理员身份运行。
 
 ## 为什么用双击而不是后台服务
 
 macOS 的“App 管理”保护只允许继承了相应授权的进程改写别的 App 包。终端有这个授权，
-launchd 守护进程没有。所以启动脚本刻意从终端启动，再用 `nohup` 让面板脱离会话：
+launchd 守护进程没有。所以启动脚本刻意从终端启动，再由跨平台启动器创建独立会话：
 既保住写入权限，又能在你关掉终端窗口后继续运行。
 
+Windows 使用 `open-control-panel.bat` 请求一次 UAC 管理员权限，再由同一个启动器以独立
+进程启动面板。
+
 面板固定在 `8765` 端口，不会偷偷换端口，所以书签一直有效。
+
+## 平台说明
+
+macOS 默认查找 `/Applications/Codex.app` 和 `/Applications/ChatGPT.app`。
+Windows 默认查找常见的用户安装目录和程序目录中的 `ChatGPT.exe`、`Codex.exe`。
+如果应用安装在特殊目录，Windows 面板提供“选择应用”按钮；命令行也可以设置
+`CODEX_APP_PATH`。
+
+应用必须是普通桌面安装，并且 exe 旁边存在 `resources\app.asar`。受保护目录或
+Microsoft Store 版本可能拒绝修改，面板会显示具体错误，不要通过关闭系统安全功能绕过。
 
 ## 命令行用法
 
@@ -59,7 +90,7 @@ launchd 守护进程没有。所以启动脚本刻意从终端启动，再用 `n
 ```bash
 SKILL=~/.codex/skills/codex-wallpaper
 
-# 应用内置壁纸
+# macOS：应用内置壁纸
 python3 $SKILL/scripts/codex_theme_patcher.py
 
 # 应用自己的图片，并把主面板底色调淡
@@ -72,6 +103,13 @@ python3 $SKILL/scripts/codex_theme_patcher.py --status
 python3 $SKILL/scripts/codex_theme_patcher.py --restore
 ```
 
+Windows 用户通常直接双击 `open-control-panel.bat`；如果要命令行运行：
+
+```powershell
+py -3 .\panel\launcher.py
+py -3 .\scripts\codex_theme_patcher.py --app "C:\路径\ChatGPT.exe"
+```
+
 ## 恢复原样
 
 在面板里点“恢复官方外观”，或者跑 `--restore`。脚本第一次运行时会把原始的
@@ -81,6 +119,8 @@ python3 $SKILL/scripts/codex_theme_patcher.py --restore
 
 - ChatGPT 客户端升级后会换掉 `app.asar`，壁纸会消失，重新应用一次即可。
 - 别把面板挂到登录项或 launchd 里，那样会丢掉写入权限，点“应用”会失败。
+- Windows 客户端升级后同样可能替换 `resources\app.asar`，重新应用一次即可。
+- Windows 的 `open-control-panel.bat` 需要 Python 3；启动器会在缺少 Python 时直接提示。
 - 常见问题和排查见 [codex-wallpaper/references/pitfalls.md](codex-wallpaper/references/pitfalls.md)。
 
 ## 开发

@@ -36,11 +36,18 @@ python3 -m unittest discover -s "$SKILL_DIR/tests" >/dev/null
 print "  测试通过"
 
 python3 -m py_compile "$SKILL_DIR/panel/server.py" \
-  "$SKILL_DIR/scripts/codex_theme_patcher.py"
+  "$SKILL_DIR/panel/launcher.py" \
+  "$SKILL_DIR/scripts/codex_theme_patcher.py" \
+  "$SKILL_DIR/scripts/platform_support.py"
 print "  Python 语法检查通过"
 
 zsh -n "$SKILL_DIR/open-control-panel.command"
 print "  启动脚本语法检查通过"
+[[ -f "$SKILL_DIR/open-control-panel.bat" ]] || {
+  print -u2 "找不到 Windows 启动脚本: $SKILL_DIR/open-control-panel.bat"
+  exit 1
+}
+print "  Windows 启动脚本检查通过"
 
 # Build from a clean staging copy so stray local files never leak into a release.
 STAGE="$(mktemp -d)"

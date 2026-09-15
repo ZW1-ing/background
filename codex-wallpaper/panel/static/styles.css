@@ -43,7 +43,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -460,6 +461,44 @@ button {
 
 .upload-section {
   padding-bottom: 22px;
+}
+
+.app-section {
+  background: #fbfcfc;
+}
+
+.app-picker-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.app-picker-row select {
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+}
+
+.app-picker-row select:focus {
+  outline: 2px solid rgba(226, 82, 47, 0.24);
+  outline-offset: 1px;
+}
+
+.app-picker-row .button {
+  flex: 0 0 auto;
+  padding: 0 11px;
+}
+
+.app-help {
+  margin: 10px 0 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .drop-zone {
