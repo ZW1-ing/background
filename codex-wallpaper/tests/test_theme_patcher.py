@@ -1,5 +1,6 @@
 import importlib.util
 import pathlib
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -139,6 +140,10 @@ class ImagePreparationTests(unittest.TestCase):
             finally:
                 prepared.cleanup()
 
+    @unittest.skipUnless(
+        sys.platform == "darwin",
+        "the bundled-image regression check requires macOS sips",
+    )
     def test_large_default_image_is_compressed_below_css_limit(self):
         prepared = PATCHER.prepare_image_for_embedding(
             str(PATCHER.DEFAULT_IMAGE)
