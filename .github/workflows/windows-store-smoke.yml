@@ -121,6 +121,7 @@ jobs:
             Write-Output "::error title=Store copy::$message"
             exit 1
           }
+          exit 0
 
       - name: Verify the unmodified Store app copy starts
         shell: pwsh
