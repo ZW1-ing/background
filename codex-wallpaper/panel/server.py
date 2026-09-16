@@ -35,6 +35,7 @@ from platform_support import (  # noqa: E402
     default_image_path,
     detect_applications,
     is_windows,
+    normalized_path_key,
     platform_name,
     state_root,
 )
@@ -328,9 +329,9 @@ def applications_with_selected(applications, selected):
     result = list(applications or [])
     if not selected:
         return result
-    selected_key = os.path.normcase(selected["executable"])
+    selected_key = normalized_path_key(selected["executable"])
     if not any(
-        os.path.normcase(item.get("executable", "")) == selected_key
+        normalized_path_key(item.get("executable", "")) == selected_key
         for item in result
     ):
         result.append(selected)

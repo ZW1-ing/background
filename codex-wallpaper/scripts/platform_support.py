@@ -59,6 +59,15 @@ def _env_value(env, name):
     return None
 
 
+def normalized_path_key(path):
+    """Return a case-folded real path key for de-duplicating candidates."""
+    try:
+        resolved = os.path.realpath(os.fspath(path))
+    except (OSError, ValueError):
+        resolved = os.fspath(path)
+    return os.path.normcase(resolved)
+
+
 def _windows_candidate_paths(base, name):
     base = pathlib.Path(base)
     roots = [
@@ -95,7 +104,7 @@ def _windows_candidate_paths(base, name):
     seen = set()
 
     def add(path):
-        key = os.path.normcase(str(path))
+        key = normalized_path_key(path)
         if key not in seen:
             seen.add(key)
             candidates.append(path)
@@ -324,7 +333,7 @@ def detect_applications(platform_name=None, env=None):
         results = []
         seen = set()
         for path in candidates:
-            key = os.path.normcase(str(path))
+            key = normalized_path_key(path)
             if key in seen:
                 continue
             seen.add(key)
@@ -353,7 +362,7 @@ def detect_applications(platform_name=None, env=None):
     roots_seen = set()
     unique_roots = []
     for root in roots:
-        key = os.path.normcase(str(root))
+        key = normalized_path_key(root)
         if key in roots_seen:
             continue
         roots_seen.add(key)
@@ -369,7 +378,7 @@ def detect_applications(platform_name=None, env=None):
             item = application_from_path(str(executable), platform_name)
             if not item:
                 continue
-            key = os.path.normcase(item["executable"])
+            key = normalized_path_key(item["executable"])
             if key not in seen:
                 results.append(item)
                 seen.add(key)
@@ -385,7 +394,7 @@ def detect_applications(platform_name=None, env=None):
             item = application_from_path(str(executable), platform_name)
             if not item:
                 continue
-            key = os.path.normcase(item["executable"])
+            key = normalized_path_key(item["executable"])
             if key not in seen:
                 results.append(item)
                 seen.add(key)
