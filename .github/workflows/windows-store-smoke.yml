@@ -61,60 +61,66 @@ jobs:
       - name: Copy Store app to a writable directory
         shell: pwsh
         run: |
-          $package = Get-AppxPackage |
-            Where-Object { $_.Name -match 'ChatGPT|OpenAI' } |
-            Sort-Object Version -Descending |
-            Select-Object -First 1
-          if (-not $package) {
-            throw "Microsoft Store ChatGPT package was not installed."
-          }
-
-          $manifest = Get-AppxPackageManifest $package
-          $declared = @(
-            $manifest.Package.Applications.Application |
-              ForEach-Object { $_.Executable } |
-              Where-Object { $_ }
-          )
-          $available = @(
-            Get-ChildItem -Path $package.InstallLocation `
-              -Recurse -File -Filter *.exe -ErrorAction SilentlyContinue |
-              Select-Object -ExpandProperty FullName
-          )
-          Write-Output (
-            "::notice title=Store executables::Declared: " +
-            "$($declared -join ', ') | Found: $($available -join ', ')"
-          )
-          Write-Output "Declared executables: $($declared -join ', ')"
-          $exe = $null
-          foreach ($relative in $declared) {
-            $candidate = Join-Path $package.InstallLocation $relative
-            if (Test-Path $candidate) {
-              $exe = Get-Item $candidate
-              break
+          try {
+            $package = Get-AppxPackage |
+              Where-Object { $_.Name -match 'ChatGPT|OpenAI' } |
+              Sort-Object Version -Descending |
+              Select-Object -First 1
+            if (-not $package) {
+              throw "Microsoft Store ChatGPT package was not installed."
             }
-          }
-          if (-not $exe) {
-            throw (
-              "No declared executable was found. Declared: " +
-              "$($declared -join ', '). Available: $($available -join ', ')"
+
+            $manifest = Get-AppxPackageManifest $package
+            $declared = @(
+              $manifest.Package.Applications.Application |
+                ForEach-Object { $_.Executable } |
+                Where-Object { $_ }
             )
-          }
+            $available = @(
+              Get-ChildItem -Path $package.InstallLocation `
+                -Recurse -File -Filter *.exe -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty FullName
+            )
+            Write-Output (
+              "::notice title=Store executables::Declared: " +
+              "$($declared -join ', ') | Found: $($available -join ', ')"
+            )
+            $exe = $null
+            foreach ($relative in $declared) {
+              $candidate = Join-Path $package.InstallLocation $relative
+              if (Test-Path $candidate) {
+                $exe = Get-Item $candidate
+                break
+              }
+            }
+            if (-not $exe) {
+              throw (
+                "No declared executable was found. Declared: " +
+                "$($declared -join ', '). Available: $($available -join ', ')"
+              )
+            }
 
-          $copyRoot = Join-Path $env:LOCALAPPDATA `
-            "codex-wallpaper\writable-apps\ci-smoke"
-          if (Test-Path $copyRoot) {
-            Remove-Item -Recurse -Force $copyRoot
-          }
-          New-Item -ItemType Directory -Path $copyRoot | Out-Null
-          robocopy $exe.DirectoryName $copyRoot /E /R:2 /W:2 | Out-Null
-          if ($LASTEXITCODE -ge 8) {
-            throw "Could not copy the Store app. robocopy exit code: $LASTEXITCODE"
-          }
+            $copyRoot = Join-Path $env:LOCALAPPDATA `
+              "codex-wallpaper\writable-apps\ci-smoke"
+            if (Test-Path $copyRoot) {
+              Remove-Item -Recurse -Force $copyRoot
+            }
+            New-Item -ItemType Directory -Path $copyRoot | Out-Null
+            robocopy $exe.DirectoryName $copyRoot /E /R:2 /W:2 | Out-Null
+            $copyCode = $LASTEXITCODE
+            if ($copyCode -ge 8) {
+              throw "robocopy failed with exit code $copyCode"
+            }
 
-          $copyExe = Join-Path $copyRoot $exe.Name
-          Write-Output "::notice title=Store copy::Copied to $copyExe"
-          "SMOKE_CHATGPT_EXE=$copyExe" |
-            Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            $copyExe = Join-Path $copyRoot $exe.Name
+            Write-Output "::notice title=Store copy::Copied to $copyExe"
+            "SMOKE_CHATGPT_EXE=$copyExe" |
+              Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          } catch {
+            $message = ($_ | Out-String) -replace "\r?\n", " | "
+            Write-Output "::error title=Store copy::$message"
+            exit 1
+          }
 
       - name: Verify the unmodified Store app copy starts
         shell: pwsh
