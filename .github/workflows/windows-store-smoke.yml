@@ -39,6 +39,11 @@ jobs:
       - name: Copy Store app and verify it can start
         shell: pwsh
         run: |
+          trap {
+            $message = ($_ | Out-String) -replace "\r?\n", " | "
+            Write-Output "::error title=Store copy::$message"
+            exit 1
+          }
           $package = Get-AppxPackage |
             Where-Object { $_.Name -match 'ChatGPT|OpenAI' } |
             Sort-Object Version -Descending |
@@ -78,6 +83,11 @@ jobs:
       - name: Apply wallpaper to the Store app copy
         shell: pwsh
         run: |
+          trap {
+            $message = ($_ | Out-String) -replace "\r?\n", " | "
+            Write-Output "::error title=Store patch::$message"
+            exit 1
+          }
           $copyExe = $env:SMOKE_CHATGPT_EXE
           if (-not $copyExe) {
             throw "The copied ChatGPT.exe path was not available."
