@@ -1,18 +1,19 @@
-# Codex Wallpaper 1.1.3
+# Codex Wallpaper 1.1.4
 
-本版本扩展 macOS 和 Windows 的应用检测与启动方式。
+本版本修复 Windows 应用检测和失败提示，重点处理普通安装与 Microsoft Store /
+WindowsApps 安装混用的情况。
 
 ## 下载哪个文件
 
-- macOS：`codex-wallpaper-1.1.3-macos.zip`
-- Windows：`codex-wallpaper-1.1.3-windows.zip`
+- macOS：`codex-wallpaper-1.1.4-macos.zip`
+- Windows：`codex-wallpaper-1.1.4-windows.zip`
 
 每个平台包都有同名的 `.sha256` 校验文件。不要下载 GitHub 自动生成的
 `Source code (zip)` 或 `Source code (tar.gz)`，它们不是安装包。
 
 ## Windows 使用
 
-1. 解压 `codex-wallpaper-1.1.3-windows.zip`。
+1. 解压 `codex-wallpaper-1.1.4-windows.zip`。
 2. 安装 Python 3。
 3. 双击 `codex-wallpaper/open-control-panel.bat`。
 4. 允许 UAC 管理员权限。
@@ -22,20 +23,17 @@
 
 ## macOS 使用
 
-1. 解压 `codex-wallpaper-1.1.3-macos.zip`。
+1. 解压 `codex-wallpaper-1.1.4-macos.zip`。
 2. 双击 `codex-wallpaper/open-control-panel.command`。
 3. 按面板提示授权。
 
 ## 主要更新
 
-- macOS 和 Windows 改为两个独立下载包，每个包只包含对应系统的启动文件。
-- 直接拉取 GitHub 仓库后，根目录也提供对应系统的启动文件。
-- macOS 支持在面板中手动选择安装在自定义目录的 ChatGPT.app 或 Codex.app。
-- Windows 自动检测扩展到注册表安装信息、运行进程，以及 OpenAI、Codex Desktop
-  等常见安装目录。
-- 新增发布流程检查，防止 macOS 包内混入 Windows 启动文件，或反之。
-- 继续使用同一套控制面板和背景修改逻辑，两个平台功能保持一致。
-- 新增跨平台后台启动器，双击启动文件即可启动或复用面板。
-- 增加独立健康检查，面板服务退出后可以重新双击启动文件恢复。
-- 修复 Windows 应用路径、失效目标和错误切换问题。
-- 增加 Windows 受保护安装和 Electron 完整性保护检查。
+- Windows 继续自动检测 `%LOCALAPPDATA%\Programs`、注册表安装路径和运行进程路径。
+- 如果保存的目标是不可修改的 Microsoft Store / WindowsApps 安装，但检测到普通桌面版，
+  面板会自动改用普通桌面版。
+- 普通桌面版和 Store 版同时存在时，优先选择可修改的普通桌面版。
+- 只有 Store 版时，面板会明确标记“不支持”，不再进入失败的写入流程。
+- 应用失败时，“运行输出”会显示补丁脚本的完整错误，不再只显示通用提示。
+- 修复新增前端脚本没有由控制面板服务提供的问题。
+- 新增 Windows 受保护安装和失败输出回归测试。

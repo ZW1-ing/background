@@ -22,6 +22,9 @@ jobs:
       - name: Run tests
         run: python3 -m unittest discover -s codex-wallpaper/tests -v
 
+      - name: Run frontend tests
+        run: node codex-wallpaper/tests/test_panel_api.js
+
       - name: Build platform archives
         run: |
           set -euo pipefail

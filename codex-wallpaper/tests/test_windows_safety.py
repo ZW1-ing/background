@@ -63,6 +63,45 @@ class WindowsSafetyTests(unittest.TestCase):
             state = SERVER.status_payload()
         self.assertIn(app, state["applications"])
 
+    def test_saved_unsupported_windows_target_prefers_patchable_install(self):
+        unsupported = {
+            "name": "ChatGPT",
+            "executable": (
+                r"C:\Program Files\WindowsApps\OpenAI.ChatGPT\ChatGPT.exe"
+            ),
+            "asar": (
+                r"C:\Program Files\WindowsApps\OpenAI.ChatGPT\resources\app.asar"
+            ),
+            "canApply": False,
+            "patchabilityError": (
+                "Microsoft Store / WindowsApps 安装受系统保护，当前版本不支持修改。"
+            ),
+        }
+        supported = {
+            "name": "ChatGPT",
+            "executable": (
+                r"C:\Users\me\AppData\Local\Programs\ChatGPT\ChatGPT.exe"
+            ),
+            "asar": (
+                r"C:\Users\me\AppData\Local\Programs\ChatGPT"
+                r"\resources\app.asar"
+            ),
+            "canApply": True,
+            "patchabilityError": None,
+        }
+        with mock.patch.object(
+            SERVER, "validate_app_path", return_value=unsupported
+        ), mock.patch.object(
+            SERVER,
+            "detect_applications",
+            return_value=[unsupported, supported],
+        ):
+            selected = SERVER.selected_application(
+                state={"appPath": unsupported["executable"]},
+            )
+
+        self.assertEqual(selected, supported)
+
     def test_windows_candidate_environment_names_are_case_insensitive(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
@@ -123,6 +162,23 @@ class WindowsSafetyTests(unittest.TestCase):
             (root / "AppxManifest.xml").write_text("<Package/>")
             with self.assertRaises(ValueError):
                 PLATFORM.ensure_windows_patchable(str(exe))
+
+    def test_windowsapps_application_is_marked_unsupported(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            app_dir = root / "WindowsApps" / "OpenAI.ChatGPT_1.0.0_x64"
+            exe = app_dir / "ChatGPT.exe"
+            asar = app_dir / "resources" / "app.asar"
+            exe.parent.mkdir(parents=True)
+            asar.parent.mkdir()
+            exe.write_bytes(b"exe")
+            asar.write_bytes(b"asar")
+
+            app = PLATFORM.application_from_path(str(exe), "win32")
+
+        self.assertIsNotNone(app)
+        self.assertFalse(app["canApply"])
+        self.assertIn("Microsoft Store", app["patchabilityError"])
 
     def test_missing_python_compression_output_is_not_accepted_as_an_image(self):
         import codex_theme_patcher as patcher

@@ -14,6 +14,7 @@ const DEFAULTS = {
   },
 };
 
+const { requestJson, errorOutput } = globalThis.CodexWallpaperApi;
 const preview = document.querySelector("#preview");
 const imageInput = document.querySelector("#image-input");
 const dropZone = document.querySelector("#drop-zone");
@@ -36,6 +37,7 @@ const appHelp = document.querySelector("#app-help");
 let uploadedImageDataUri = null;
 let uploadedObjectUrl = null;
 let toastTimer = null;
+let canApplyCurrentTarget = true;
 
 function setPreviewImage(url) {
   preview.style.setProperty("--preview-image", `url("${url}")`);
@@ -145,25 +147,12 @@ function renderPreview() {
 }
 
 function setBusy(isBusy) {
-  applyButton.disabled = isBusy;
+  applyButton.disabled = isBusy || !canApplyCurrentTarget;
   restoreButton.disabled = isBusy;
   chooseAppButton.disabled = isBusy;
   refreshAppsButton.disabled = isBusy;
   appSelect.disabled = isBusy;
   applyButton.textContent = isBusy ? "正在应用..." : "应用背景";
-}
-
-async function requestJson(url, payload) {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const data = await response.json();
-  if (!response.ok || !data.ok) {
-    throw new Error(data.error || "操作失败");
-  }
-  return data;
 }
 
 function describeStatus(state) {
@@ -192,10 +181,22 @@ function renderApplicationControls(state) {
   }
 
   appSection.hidden = false;
-  appHelp.textContent =
-    state.platform === "Windows"
-      ? "Windows 需要管理员权限，才能修改应用资源。"
-      : "如果没有自动检测到应用，可以在这里手动选择。";
+  const selected = state.selectedApp;
+  const targetCanApply = Boolean(selected && selected.canApply !== false);
+  canApplyCurrentTarget = targetCanApply;
+  appHelp.classList.toggle(
+    "is-error",
+    Boolean(selected && selected.canApply === false)
+  );
+  if (selected && selected.canApply === false) {
+    appHelp.textContent =
+      selected.patchabilityError || "当前安装受系统保护，无法修改应用资源。";
+  } else {
+    appHelp.textContent =
+      state.platform === "Windows"
+        ? "Windows 需要管理员权限，才能修改应用资源。"
+        : "如果没有自动检测到应用，可以在这里手动选择。";
+  }
   const applications = state.applications || [];
   appSelect.replaceChildren();
   if (!applications.length) {
@@ -207,12 +208,14 @@ function renderApplicationControls(state) {
       state.platform === "Windows"
         ? "请选择已安装的 ChatGPT.exe 或 Codex.exe"
         : "请选择已安装的 ChatGPT.app 或 Codex.app";
+    applyButton.disabled = !canApplyCurrentTarget;
     return;
   }
 
   for (const application of applications) {
+    const unsupported = application.canApply === false ? "（不支持）" : "";
     const option = new Option(
-      `${application.name} · ${application.executable}`,
+      `${application.name}${unsupported} · ${application.executable}`,
       application.executable
     );
     option.title = application.executable;
@@ -221,8 +224,11 @@ function renderApplicationControls(state) {
     appSelect.add(option);
   }
   appTargetStatus.textContent = state.selectedApp
-    ? `当前使用 ${state.selectedApp.name}`
+    ? targetCanApply
+      ? `当前使用 ${state.selectedApp.name}`
+      : "当前目标不支持修改"
     : "请选择要修改的应用";
+  applyButton.disabled = !canApplyCurrentTarget;
 }
 
 function applyState(state) {
@@ -380,14 +386,14 @@ applyButton.addEventListener("click", async () => {
         setOutput(`${data.output}\n\n${restartData.output}`);
         showToast(`背景已应用，${appName} 已重新打开`);
       } catch (restartError) {
-        setOutput(`${data.output}\n\n${restartError.message}`);
+        setOutput(`${data.output}\n\n${errorOutput(restartError)}`);
         showToast(`背景已应用，但自动重启失败，请手动重启 ${appName}`, true);
       }
     } else {
       showToast("背景已应用；请完全退出并重新打开目标应用后查看");
     }
   } catch (error) {
-    setOutput(error.message);
+    setOutput(errorOutput(error));
     showToast(error.message, true);
   } finally {
     setBusy(false);
@@ -460,7 +466,7 @@ restoreButton.addEventListener("click", async () => {
     setOutput(data.output);
     showToast("已恢复官方外观，请重新打开 ChatGPT");
   } catch (error) {
-    setOutput(error.message);
+    setOutput(errorOutput(error));
     showToast(error.message, true);
   } finally {
     setBusy(false);

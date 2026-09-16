@@ -158,6 +158,7 @@ def status_payload():
         "platform": platform_name(),
         "applications": applications,
         "selectedApp": selected,
+        "canApply": bool(selected and selected.get("canApply", True)),
         "canChooseApp": True,
     }
 
@@ -174,13 +175,31 @@ def selected_application(state=None, applications=None):
     selected_path = state.get("appPath")
     if selected_path:
         selected = validate_app_path(selected_path)
-        return selected
+        if selected:
+            if selected.get("canApply", True):
+                return selected
+            return next(
+                (
+                    app
+                    for app in applications
+                    if app.get("canApply", True)
+                ),
+                selected,
+            )
+        return None
     override = os.environ.get("CODEX_APP_PATH")
     if override:
         selected = validate_app_path(override)
         if selected:
             return selected
-    return applications[0] if applications else None
+    return next(
+        (
+            app
+            for app in applications
+            if app.get("canApply", True)
+        ),
+        applications[0] if applications else None,
+    )
 
 
 def applications_with_selected(applications, selected):
@@ -415,6 +434,8 @@ class PanelHandler(BaseHTTPRequestHandler):
             )
         if route == "/styles.css":
             return self.serve_static(STATIC_ROOT / "styles.css")
+        if route == "/api.js":
+            return self.serve_static(STATIC_ROOT / "api.js")
         if route == "/app.js":
             return self.serve_static(STATIC_ROOT / "app.js")
         if route == "/assets/default-wallpaper.png":
@@ -480,6 +501,17 @@ class PanelHandler(BaseHTTPRequestHandler):
                 )
             raise ValueError(
                 "没有找到可修改的 ChatGPT.exe 或 Codex.exe，请先选择应用。"
+            )
+
+        selected = selected_application()
+        if (
+            is_windows()
+            and selected
+            and selected.get("canApply", True) is False
+        ):
+            raise ValueError(
+                selected.get("patchabilityError")
+                or "当前安装受系统保护，无法修改应用资源。"
             )
 
         image_data = body.pop("imageData", None)

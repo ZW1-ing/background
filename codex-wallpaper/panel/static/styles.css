@@ -501,6 +501,10 @@ button {
   line-height: 1.5;
 }
 
+.app-help.is-error {
+  color: var(--danger);
+}
+
 .drop-zone {
   display: flex;
   flex-direction: column;

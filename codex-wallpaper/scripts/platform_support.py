@@ -284,10 +284,17 @@ def application_from_path(app_path, platform_name=None):
     asar = pathlib.Path(app_package_path(str(path), platform_name))
     if not executable.is_file() or not asar.is_file():
         return None
+    patchability_error = None
+    if is_windows(platform_name):
+        patchability_error = windows_installation_issue(
+            str(executable), platform_name
+        )
     return {
         "name": matched,
         "executable": str(executable if is_windows(platform_name) else path),
         "asar": str(asar),
+        "canApply": patchability_error is None,
+        "patchabilityError": patchability_error,
     }
 
 
@@ -377,6 +384,24 @@ def detect_applications(platform_name=None, env=None):
     return results
 
 
+def windows_installation_issue(exe_path, platform_name=None):
+    """Return a protection reason for unsupported Windows installs."""
+    if not is_windows(platform_name):
+        return None
+    path = pathlib.Path(exe_path).expanduser()
+    if path.suffix.lower() != ".exe" or not path.is_file():
+        return "目标必须是实际存在的 ChatGPT.exe 或 Codex.exe 文件。"
+
+    lowered_parts = {part.lower() for part in path.parts}
+    if "windowsapps" in lowered_parts:
+        return "Microsoft Store / WindowsApps 安装受系统保护，当前版本不支持修改。"
+
+    for parent in (path.parent, *path.parents):
+        if (parent / "AppxManifest.xml").is_file():
+            return "检测到 Microsoft Store / MSIX 安装，当前版本不支持修改。"
+    return None
+
+
 def ensure_windows_patchable(exe_path):
     """Reject protected or unknown Electron Windows installations.
 
@@ -385,20 +410,9 @@ def ensure_windows_patchable(exe_path):
     integrity feature.
     """
     path = pathlib.Path(exe_path).expanduser()
-    if path.suffix.lower() != ".exe" or not path.is_file():
-        raise ValueError("目标必须是实际存在的 ChatGPT.exe 或 Codex.exe 文件。")
-
-    lowered_parts = {part.lower() for part in path.parts}
-    if "windowsapps" in lowered_parts:
-        raise ValueError(
-            "Microsoft Store / WindowsApps 安装受系统保护，当前版本不支持修改。"
-        )
-
-    for parent in (path.parent, *path.parents):
-        if (parent / "AppxManifest.xml").is_file():
-            raise ValueError(
-                "检测到 Microsoft Store / MSIX 安装，当前版本不支持修改。"
-            )
+    issue = windows_installation_issue(exe_path, "win32")
+    if issue:
+        raise ValueError(issue)
 
     sentinel = b"dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX"
     try:

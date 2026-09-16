@@ -43,6 +43,17 @@ class HealthEndpointTests(unittest.TestCase):
             ],
         )
 
+    def test_api_script_is_served_by_the_panel(self):
+        replies = []
+        handler = SimpleNamespace(
+            path="/api.js",
+            serve_static=lambda path: replies.append(path),
+        )
+
+        SERVER.PanelHandler.do_GET(handler)
+
+        self.assertEqual(replies, [SERVER.STATIC_ROOT / "api.js"])
+
 
 class DecodeDataUriTests(unittest.TestCase):
     def test_decode_png_data_uri(self):
@@ -222,6 +233,49 @@ class WindowsApplicationTests(unittest.TestCase):
                 )
 
         self.assertEqual(calls[0][:2], ["--app", selected["executable"]])
+
+    def test_apply_rejects_unsupported_windows_target_before_patcher(self):
+        selected = {
+            "name": "ChatGPT",
+            "executable": (
+                r"C:\Program Files\WindowsApps\OpenAI.ChatGPT\ChatGPT.exe"
+            ),
+            "asar": (
+                r"C:\Program Files\WindowsApps\OpenAI.ChatGPT\resources\app.asar"
+            ),
+            "canApply": False,
+            "patchabilityError": (
+                "Microsoft Store / WindowsApps 安装受系统保护，当前版本不支持修改。"
+            ),
+        }
+        replies = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_root = pathlib.Path(temp_dir)
+            with mock.patch.object(SERVER, "STATE_ROOT", state_root), \
+                    mock.patch.object(
+                        SERVER, "STATE_FILE", state_root / "state.json"
+                    ), mock.patch.object(
+                        SERVER, "CONFIG_FILE", state_root / "config.json"
+                    ), mock.patch.object(
+                        SERVER, "is_windows", return_value=True
+                    ), mock.patch.object(
+                        SERVER, "selected_application", return_value=selected
+                    ), mock.patch.object(SERVER, "run_patcher") as run_patcher:
+                handler = SimpleNamespace(
+                    send_json=lambda payload, status=200: replies.append(
+                        (payload, status)
+                    )
+                )
+                with self.assertRaises(ValueError):
+                    SERVER.PanelHandler.apply_wallpaper(
+                        handler,
+                        {
+                            "imageName": "custom.png",
+                            "config": {"background": {}, "surfaces": {}},
+                        },
+                    )
+
+        run_patcher.assert_not_called()
 
     def test_windows_app_path_points_to_resources_asar_next_to_executable(self):
         with tempfile.TemporaryDirectory() as temp_dir:
