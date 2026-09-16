@@ -51,11 +51,32 @@ jobs:
           if (-not $package) {
             throw "Microsoft Store ChatGPT package was not installed."
           }
-          $exe = Get-ChildItem -Path $package.InstallLocation `
-            -Recurse -Filter ChatGPT.exe -ErrorAction Stop |
-            Select-Object -First 1
+
+          $manifest = Get-AppxPackageManifest $package
+          $declared = @(
+            $manifest.Package.Applications.Application |
+              ForEach-Object { $_.Executable } |
+              Where-Object { $_ }
+          )
+          Write-Output "Declared executables: $($declared -join ', ')"
+          $exe = $null
+          foreach ($relative in $declared) {
+            $candidate = Join-Path $package.InstallLocation $relative
+            if (Test-Path $candidate) {
+              $exe = Get-Item $candidate
+              break
+            }
+          }
           if (-not $exe) {
-            throw "ChatGPT.exe was not found in $($package.InstallLocation)."
+            $available = @(
+              Get-ChildItem -Path $package.InstallLocation `
+                -Recurse -File -Filter *.exe -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty FullName
+            )
+            throw (
+              "No declared executable was found. Declared: " +
+              "$($declared -join ', '). Available: $($available -join ', ')"
+            )
           }
 
           $copyRoot = Join-Path $env:LOCALAPPDATA `
