@@ -58,6 +58,15 @@ jobs:
               ForEach-Object { $_.Executable } |
               Where-Object { $_ }
           )
+          $available = @(
+            Get-ChildItem -Path $package.InstallLocation `
+              -Recurse -File -Filter *.exe -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName
+          )
+          Write-Output (
+            "::notice title=Store executables::Declared: " +
+            "$($declared -join ', ') | Found: $($available -join ', ')"
+          )
           Write-Output "Declared executables: $($declared -join ', ')"
           $exe = $null
           foreach ($relative in $declared) {
@@ -68,11 +77,6 @@ jobs:
             }
           }
           if (-not $exe) {
-            $available = @(
-              Get-ChildItem -Path $package.InstallLocation `
-                -Recurse -File -Filter *.exe -ErrorAction SilentlyContinue |
-                Select-Object -ExpandProperty FullName
-            )
             throw (
               "No declared executable was found. Declared: " +
               "$($declared -join ', '). Available: $($available -join ', ')"
