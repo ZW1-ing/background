@@ -108,7 +108,15 @@ class WindowsSafetyTests(unittest.TestCase):
             (root / "Codex/resources").mkdir(parents=True)
             (root / "Codex/Codex.exe").write_bytes(b"exe")
             (root / "Codex/resources/app.asar").write_bytes(b"asar")
-            apps = PLATFORM.detect_applications("win32", {"ProgramFiles": temp})
+            with mock.patch.object(
+                PLATFORM,
+                "_windows_profile_roots",
+                return_value=[],
+            ):
+                apps = PLATFORM.detect_applications(
+                    "win32",
+                    {"ProgramFiles": temp},
+                )
         self.assertEqual([a["name"] for a in apps], ["Codex"])
 
     def test_macos_detection_includes_user_applications_directory(self):
