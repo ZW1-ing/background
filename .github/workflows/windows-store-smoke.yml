@@ -143,6 +143,35 @@ jobs:
           Stop-Process -Id $process.Id -Force
           Write-Output "Unmodified Store app copy started successfully."
 
+      - name: Inspect Store app asar layout
+        shell: pwsh
+        run: |
+          $copyExe = $env:SMOKE_CHATGPT_EXE
+          $env:PYTHONIOENCODING = "utf-8"
+          $script = @'
+          import importlib.util
+          import pathlib
+
+          root = pathlib.Path("codex-wallpaper")
+          spec = importlib.util.spec_from_file_location(
+              "smoke_patcher", root / "scripts" / "codex_theme_patcher.py"
+          )
+          patcher = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(patcher)
+
+          executable = pathlib.Path(r"__COPY_EXE__")
+          asar = executable.parent / "resources" / "app.asar"
+          _, header = patcher.read_header(asar)
+          paths = [path for _offset, path, _node in patcher.packed_entries(header)]
+          interesting = [
+              path for path in paths
+              if path.lower().endswith((".html", ".css"))
+          ]
+          print("::notice title=Store asar::%s" % " | ".join(interesting[:80]))
+          '@
+          $script = $script.Replace("__COPY_EXE__", $copyExe)
+          $script | python -
+
       - name: Apply wallpaper to the Store app copy
         shell: pwsh
         run: |
