@@ -1,5 +1,16 @@
 # 更新日志
 
+## 1.1.7
+
+修复当前 Microsoft Store 版 ChatGPT 无法应用背景的问题，并完成 Windows 真机验证。
+
+- 识别 Store 包中的 `app\ChatGPT Classic.exe`，不再因可执行文件名不同而漏检。
+- 支持当前 Store 版使用的 `/.vite/renderer/` ASAR 页面和样式资源布局。
+- 控制面板创建可写副本后，仅在该副本中关闭 Electron 的 ASAR 完整性校验，使重新
+  打包后的副本可以启动；原始 Store 安装和 Windows 安全设置均不修改。
+- Windows Store 冒烟测试会从 Microsoft Store 安装真实应用，验证检测、复制、打补丁
+  和启动完整链路。
+
 ## 1.1.6
 
 修复 Windows Microsoft Store / WindowsApps 自动副本的后续应用问题。
