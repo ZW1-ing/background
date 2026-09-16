@@ -72,6 +72,32 @@ class WindowsSafetyTests(unittest.TestCase):
             apps = PLATFORM.detect_applications("win32", {"ProgramFiles": temp})
         self.assertEqual([a["name"] for a in apps], ["Codex"])
 
+    def test_macos_detection_includes_user_applications_directory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home = pathlib.Path(temp)
+            app = home / "Applications" / "ChatGPT.app"
+            (app / "Contents/MacOS").mkdir(parents=True)
+            (app / "Contents/Resources").mkdir()
+            (app / "Contents/Resources/app.asar").write_bytes(b"asar")
+            (app / "Contents/MacOS/ChatGPT").write_bytes(b"app")
+
+            apps = PLATFORM.detect_applications(
+                platform_name="darwin",
+                env={"HOME": str(home)},
+            )
+
+        self.assertIn(str(app), [item["executable"] for item in apps])
+
+    def test_windows_profile_roots_include_other_local_users(self):
+        with tempfile.TemporaryDirectory() as temp:
+            drive = pathlib.Path(temp)
+            local_app_data = drive / "Users" / "alice" / "AppData" / "Local"
+            local_app_data.mkdir(parents=True)
+
+            roots = PLATFORM._windows_profile_roots({"SystemDrive": str(drive)})
+
+        self.assertIn(local_app_data, roots)
+
     def test_invalid_executable_extension_and_name_are_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)

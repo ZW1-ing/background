@@ -3,7 +3,7 @@
 给 macOS 和 Windows 上的 Codex / ChatGPT 桌面客户端换一张永久背景壁纸，带一个可视化控制面板：
 上传图片、拖动滑块调参数、点“应用背景”，界面就换好了。
 
-当前发布版本：`1.1.2`
+当前发布版本：`1.1.3`
 
 壁纸被写进 App 自身的资源包里，所以重启电脑、退出重开都还在，不依赖任何常驻插件或
 DevTools 注入。
@@ -15,8 +15,8 @@ DevTools 注入。
 从 [Releases](../../releases/latest) 按系统下载对应的最终使用包：
 
 ```text
-macOS:   codex-wallpaper-1.1.2-macos.zip
-Windows: codex-wallpaper-1.1.2-windows.zip
+macOS:   codex-wallpaper-1.1.3-macos.zip
+Windows: codex-wallpaper-1.1.3-windows.zip
 ```
 
 macOS 和 Windows 使用不同的独立安装包，每个包只包含当前系统的启动文件。
@@ -32,7 +32,19 @@ macOS 和 Windows 使用不同的独立安装包，每个包只包含当前系�
 # Windows：双击 codex-wallpaper\open-control-panel.bat
 ```
 
-如果还希望在 Codex 中作为 Skill 使用，macOS 用户再把文件夹放进技能目录：
+如果是直接拉取 GitHub 仓库，进入仓库根目录后即可启动：
+
+```bash
+git clone https://github.com/ZW1-ing/background.git
+cd background
+# macOS：双击 ./open-control-panel.command
+# Windows：双击 .\open-control-panel.bat
+```
+
+仓库根目录的启动文件会自动调用 `codex-wallpaper/` 里的控制面板。不要直接双击
+`panel/server.py`，也不要在浏览器里直接打开 `http://127.0.0.1:8765/`；必须先启动面板。
+
+如果还希望在 Codex 中作为 Skill 使用，再把 `codex-wallpaper` 文件夹放进技能目录：
 
 ```bash
 mkdir -p ~/.codex/skills
@@ -43,13 +55,6 @@ Windows 会弹出 UAC 管理员授权，这是为了修改桌面客户端自己�
 `resources\app.asar`。控制面板会自动检测 ChatGPT 和 Codex，不需要手动填写
 `app.asar` 路径；只有特殊安装目录没有被检测到时，才需要在面板里选择对应的
 `ChatGPT.exe` 或 `Codex.exe`。
-
-macOS 用户也可以直接克隆仓库：
-
-```bash
-git clone https://github.com/<你的用户名>/codex-wallpaper.git
-cp -R codex-wallpaper/codex-wallpaper ~/.codex/skills/
-```
 
 ## 使用
 
@@ -88,9 +93,10 @@ Windows 使用 `open-control-panel.bat` 请求一次 UAC 管理员权限，再�
 
 ## 平台说明
 
-macOS 默认查找 `/Applications/Codex.app` 和 `/Applications/ChatGPT.app`。
-Windows 默认查找常见的用户安装目录和程序目录中的 `ChatGPT.exe`、`Codex.exe`。
-如果应用安装在特殊目录，Windows 面板提供“选择应用”按钮；命令行也可以设置
+macOS 默认查找 `/Applications` 和 `~/Applications` 下的 `Codex.app`、`ChatGPT.app`。
+Windows 默认查找常见的用户安装目录和程序目录，同时读取注册表安装信息和正在运行的
+ChatGPT/Codex 进程路径，兼容 `OpenAI\ChatGPT`、`Codex Desktop` 等目录命名。
+如果应用安装在特殊目录，面板提供“选择应用”按钮；命令行也可以设置
 `CODEX_APP_PATH`。
 
 应用必须是普通桌面安装，并且 exe 旁边存在 `resources\app.asar`。受保护目录或
@@ -151,8 +157,8 @@ python3 -m unittest discover -s codex-wallpaper/tests -v
 产物在 `dist/`，包含 macOS、Windows 两个 zip 和各自对应的 `sha256` 校验文件：
 
 ```text
-codex-wallpaper-1.1.2-macos.zip
-codex-wallpaper-1.1.2-windows.zip
+codex-wallpaper-1.1.3-macos.zip
+codex-wallpaper-1.1.3-windows.zip
 ```
 
 ## 许可

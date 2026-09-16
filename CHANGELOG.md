@@ -1,5 +1,15 @@
 # 更新日志
 
+## 1.1.3
+
+改进 Windows 应用检测和仓库直接运行体验。
+
+- Windows 应用检测支持 OpenAI、Codex Desktop 等目录，并增加注册表 App Paths、
+  安装信息和运行进程路径兜底。
+- UAC 提权后如果当前用户目录发生变化，会继续检查其他本地用户的应用目录。
+- 仓库根目录新增 macOS 和 Windows 启动代理，直接拉取仓库即可打开面板。
+- macOS 面板增加应用选择器，并检测 `~/Applications` 下的桌面应用。
+
 ## 1.1.2
 
 拆分 macOS 和 Windows 发布包。

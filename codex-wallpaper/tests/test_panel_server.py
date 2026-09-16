@@ -2,6 +2,7 @@ import base64
 import importlib.util
 import json
 import pathlib
+import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -9,6 +10,9 @@ from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+import platform_support as PLATFORM
+
 SPEC = importlib.util.spec_from_file_location(
     "panel_server", ROOT / "panel" / "server.py"
 )
@@ -256,6 +260,95 @@ class WindowsApplicationTests(unittest.TestCase):
         self.assertEqual(apps[0]["executable"], str(chatgpt / "ChatGPT.exe"))
         self.assertEqual(apps[1]["asar"], str(codex / "resources" / "app.asar"))
 
+    def test_windows_detection_finds_openai_and_desktop_named_folders(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = pathlib.Path(temp_dir)
+            local = root / "AppData" / "Local"
+            chatgpt = local / "Programs" / "OpenAI" / "ChatGPT"
+            codex = local / "Codex Desktop"
+            for app_dir, name in ((chatgpt, "ChatGPT"), (codex, "Codex")):
+                (app_dir / "resources").mkdir(parents=True)
+                (app_dir / f"{name}.exe").write_bytes(b"exe")
+                (app_dir / "resources" / "app.asar").write_bytes(b"asar")
+
+            apps = SERVER.detect_applications(
+                platform_name="win32",
+                env={"LOCALAPPDATA": str(local)},
+            )
+
+        self.assertEqual([item["name"] for item in apps], ["ChatGPT", "Codex"])
+        self.assertEqual(apps[0]["executable"], str(chatgpt / "ChatGPT.exe"))
+        self.assertEqual(apps[1]["executable"], str(codex / "Codex.exe"))
+
+    def test_windows_detection_falls_back_to_registry_candidates(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app_dir = pathlib.Path(temp_dir) / "ChatGPT"
+            executable = app_dir / "ChatGPT.exe"
+            (app_dir / "resources").mkdir(parents=True)
+            executable.write_bytes(b"exe")
+            (app_dir / "resources" / "app.asar").write_bytes(b"asar")
+
+            with mock.patch.object(
+                PLATFORM, "_windows_registry_candidates", return_value=(str(executable),)
+            ), mock.patch.object(
+                PLATFORM, "_windows_process_candidates", return_value=()
+            ):
+                apps = SERVER.detect_applications(
+                    platform_name="win32",
+                    env={"LOCALAPPDATA": str(pathlib.Path(temp_dir) / "missing")},
+                )
+
+        self.assertEqual([item["name"] for item in apps], ["ChatGPT"])
+        self.assertEqual(apps[0]["executable"], str(executable))
+
+    def test_windows_detection_ignores_invalid_static_copy_before_registry(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = pathlib.Path(temp_dir)
+            incomplete = root / "Programs" / "ChatGPT"
+            incomplete.mkdir(parents=True)
+            (incomplete / "ChatGPT.exe").write_bytes(b"exe")
+            valid_root = root / "Registry" / "ChatGPT"
+            valid_executable = valid_root / "ChatGPT.exe"
+            (valid_root / "resources").mkdir(parents=True)
+            valid_executable.write_bytes(b"exe")
+            (valid_root / "resources" / "app.asar").write_bytes(b"asar")
+
+            with mock.patch.object(
+                PLATFORM,
+                "_windows_registry_candidates",
+                return_value=(str(valid_executable),),
+            ), mock.patch.object(
+                PLATFORM, "_windows_process_candidates", return_value=()
+            ):
+                apps = SERVER.detect_applications(
+                    platform_name="win32",
+                    env={"LOCALAPPDATA": str(root)},
+                )
+
+        self.assertEqual([item["name"] for item in apps], ["ChatGPT"])
+        self.assertEqual(apps[0]["executable"], str(valid_executable))
+
+    def test_windows_detection_falls_back_to_running_process_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app_dir = pathlib.Path(temp_dir) / "Codex"
+            executable = app_dir / "Codex.exe"
+            (app_dir / "resources").mkdir(parents=True)
+            executable.write_bytes(b"exe")
+            (app_dir / "resources" / "app.asar").write_bytes(b"asar")
+
+            with mock.patch.object(
+                PLATFORM, "_windows_registry_candidates", return_value=()
+            ), mock.patch.object(
+                PLATFORM, "_windows_process_candidates", return_value=(str(executable),)
+            ):
+                apps = SERVER.detect_applications(
+                    platform_name="win32",
+                    env={"LOCALAPPDATA": str(pathlib.Path(temp_dir) / "missing")},
+                )
+
+        self.assertEqual([item["name"] for item in apps], ["Codex"])
+        self.assertEqual(apps[0]["executable"], str(executable))
+
     def test_select_app_persists_windows_target_for_future_apply(self):
         selected = r"C:\Users\me\AppData\Local\Programs\ChatGPT\ChatGPT.exe"
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -283,6 +376,35 @@ class WindowsApplicationTests(unittest.TestCase):
 
         self.assertEqual(state["appPath"], selected)
         self.assertEqual(handler.reply[0]["app"]["name"], "ChatGPT")
+
+
+class MacApplicationTests(unittest.TestCase):
+    def test_mac_application_picker_uses_osascript(self):
+        completed = SimpleNamespace(
+            returncode=0,
+            stdout="/Users/me/Applications/ChatGPT.app\n",
+            stderr="",
+        )
+        with mock.patch.object(SERVER, "is_windows", return_value=False), \
+                mock.patch.object(
+                    SERVER.shutil, "which", return_value="/usr/bin/osascript"
+                ), mock.patch.object(
+                    SERVER.subprocess, "run", return_value=completed
+                ) as run:
+            selected = SERVER.choose_app_path()
+
+        self.assertEqual(selected, "/Users/me/Applications/ChatGPT.app")
+        command = run.call_args.args[0]
+        self.assertEqual(command[:2], ["/usr/bin/osascript", "-e"])
+        self.assertIn("choose application", command[2])
+
+    def test_mac_state_exposes_application_picker_when_detection_is_empty(self):
+        with mock.patch.object(SERVER, "is_windows", return_value=False), \
+                mock.patch.object(SERVER, "detect_applications", return_value=[]), \
+                mock.patch.object(SERVER, "run_patcher", return_value=(1, "no app")):
+            state = SERVER.status_payload()
+
+        self.assertTrue(state["canChooseApp"])
 
 
 if __name__ == "__main__":

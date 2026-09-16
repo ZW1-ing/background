@@ -158,7 +158,7 @@ def status_payload():
         "platform": platform_name(),
         "applications": applications,
         "selectedApp": selected,
-        "canChooseApp": is_windows(),
+        "canChooseApp": True,
     }
 
 
@@ -204,7 +204,25 @@ def locate_app_path():
 
 def choose_app_path():
     if not is_windows():
-        raise ValueError("当前系统不需要手动选择应用")
+        osascript = shutil.which("osascript") or "/usr/bin/osascript"
+        command = (
+            'POSIX path of (choose application with prompt '
+            '"选择 ChatGPT.app 或 Codex.app")'
+        )
+        result = subprocess.run(
+            [osascript, "-e", command],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode != 0:
+            detail = result.stderr.strip()
+            raise ValueError(detail or "没有选择应用")
+        path = result.stdout.strip()
+        if not path:
+            raise ValueError("没有选择应用")
+        return path
     powershell = shutil.which("powershell.exe") or shutil.which("powershell")
     if not powershell:
         raise ValueError("找不到 Windows 文件选择器")
@@ -419,7 +437,7 @@ class PanelHandler(BaseHTTPRequestHandler):
                     "ok": True,
                     "applications": applications_with_selected(applications, selected),
                     "selectedApp": selected,
-                    "canChooseApp": is_windows(),
+                    "canChooseApp": True,
                 }
             )
         self.send_json({"ok": False, "error": "Not found"}, HTTPStatus.NOT_FOUND)

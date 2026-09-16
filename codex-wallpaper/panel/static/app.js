@@ -31,6 +31,7 @@ const appTargetStatus = document.querySelector("#app-target-status");
 const appSelect = document.querySelector("#app-select");
 const chooseAppButton = document.querySelector("#choose-app-button");
 const refreshAppsButton = document.querySelector("#refresh-apps-button");
+const appHelp = document.querySelector("#app-help");
 
 let uploadedImageDataUri = null;
 let uploadedObjectUrl = null;
@@ -191,6 +192,10 @@ function renderApplicationControls(state) {
   }
 
   appSection.hidden = false;
+  appHelp.textContent =
+    state.platform === "Windows"
+      ? "Windows 需要管理员权限，才能修改应用资源。"
+      : "如果没有自动检测到应用，可以在这里手动选择。";
   const applications = state.applications || [];
   appSelect.replaceChildren();
   if (!applications.length) {
@@ -198,7 +203,10 @@ function renderApplicationControls(state) {
     option.disabled = true;
     option.selected = true;
     appSelect.add(option);
-    appTargetStatus.textContent = "请选择已安装的 ChatGPT.exe 或 Codex.exe";
+    appTargetStatus.textContent =
+      state.platform === "Windows"
+        ? "请选择已安装的 ChatGPT.exe 或 Codex.exe"
+        : "请选择已安装的 ChatGPT.app 或 Codex.app";
     return;
   }
 
