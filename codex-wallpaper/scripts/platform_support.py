@@ -473,7 +473,11 @@ def windows_installation_issue(exe_path, platform_name=None):
     return None
 
 
-def ensure_windows_patchable(exe_path, allow_unknown=False):
+def ensure_windows_patchable(
+    exe_path,
+    allow_unknown=False,
+    patch_integrity=False,
+):
     """Reject protected or unknown Electron Windows installations.
 
     This deliberately refuses to modify binaries whose Electron fuse wire
@@ -509,7 +513,22 @@ def ensure_windows_patchable(exe_path, allow_unknown=False):
         raise ValueError("Electron 完整性格式暂不支持，已停止修改。")
 
     # FuseV1Options.EnableEmbeddedAsarIntegrityValidation is wire index 4.
-    if data[wire_start + 4 : wire_start + 5] != b"0":
+    integrity_index = wire_start + 4
+    if data[integrity_index : integrity_index + 1] != b"0":
+        if patch_integrity:
+            try:
+                with open(path, "r+b") as handle:
+                    handle.seek(integrity_index)
+                    handle.write(b"0")
+            except OSError as exc:
+                raise ValueError(
+                    "无法关闭可写副本的 Electron ASAR 完整性校验: %s" % exc
+                ) from exc
+            print(
+                "Disabled Electron ASAR integrity validation "
+                "on the writable app copy."
+            )
+            return
         raise ValueError(
             "目标应用启用了 Electron ASAR 完整性校验，当前版本不会绕过它。"
         )

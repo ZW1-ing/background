@@ -845,6 +845,7 @@ def apply_wallpaper(
         ensure_windows_patchable(
             app_path,
             allow_unknown=allow_unknown_windows,
+            patch_integrity=allow_unknown_windows,
         )
     asar_path = app_package_path(app_path)
     res_dir = os.path.dirname(asar_path)
@@ -965,6 +966,7 @@ def restore(app_path, allow_unknown_windows=False):
         ensure_windows_patchable(
             app_path,
             allow_unknown=allow_unknown_windows,
+            patch_integrity=allow_unknown_windows,
         )
     asar_path = app_package_path(app_path)
     bak_path = asar_path + ".bak"

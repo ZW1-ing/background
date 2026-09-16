@@ -167,6 +167,17 @@ class WindowsSafetyTests(unittest.TestCase):
                     PLATFORM.ensure_windows_patchable(str(exe))
             exe.write_bytes(b"MZ" + sentinel + b"\x01\x06111101")
             PLATFORM.ensure_windows_patchable(str(exe))
+            exe.write_bytes(b"MZ" + sentinel + b"\x01\x06111111")
+            PLATFORM.ensure_windows_patchable(
+                str(exe),
+                allow_unknown=True,
+                patch_integrity=True,
+            )
+            data = exe.read_bytes()
+            marker = data.index(sentinel)
+            fuse = marker + len(sentinel)
+            wire_start = fuse + 2
+            self.assertEqual(data[wire_start + 4 : wire_start + 5], b"0")
             exe.write_bytes(b"MZ not electron")
             PLATFORM.ensure_windows_patchable(str(exe), allow_unknown=True)
             (root / "AppxManifest.xml").write_text("<Package/>")
