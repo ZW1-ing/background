@@ -241,11 +241,16 @@ def remove_stale_images(keep_path=None):
 
 def run_patcher(arguments):
     command = [sys.executable, str(PATCHER), *arguments]
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
     result = subprocess.run(
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
         timeout=300,
     )
     return result.returncode, result.stdout.strip()

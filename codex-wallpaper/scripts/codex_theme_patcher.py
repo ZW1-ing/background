@@ -38,6 +38,23 @@ from platform_support import (  # noqa: E402
     is_windows,
 )
 
+
+def configure_standard_streams():
+    """Keep redirected Windows output from failing on Unicode log messages."""
+    if os.name != "nt":
+        return
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            pass
+
+
+configure_standard_streams()
+
 SKILL_ROOT = os.path.normpath(os.path.join(HERE, os.pardir))
 DEFAULT_IMAGE = str(default_image_path(SKILL_ROOT))
 
