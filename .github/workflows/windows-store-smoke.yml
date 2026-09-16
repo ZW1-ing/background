@@ -156,10 +156,16 @@ jobs:
             throw "The copied ChatGPT.exe path was not available."
           }
           $env:PYTHONIOENCODING = "utf-8"
-          python .\codex-wallpaper\scripts\codex_theme_patcher.py `
+          $output = python .\codex-wallpaper\scripts\codex_theme_patcher.py `
             --app $copyExe `
             --image .\codex-wallpaper\assets\default-wallpaper.jpg `
-            --allow-unknown-windows
+            --allow-unknown-windows 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) {
+            $message = ($output -replace "\r?\n", " | ")
+            Write-Output "::error title=Store patch::$message"
+            exit 1
+          }
+          Write-Output $output
 
           $process = Start-Process -FilePath $copyExe -PassThru
           Start-Sleep -Seconds 12
