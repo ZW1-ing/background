@@ -495,7 +495,10 @@ class WindowsApplicationTests(unittest.TestCase):
             local_programs = root / "AppData" / "Local" / "Programs"
             chatgpt = local_programs / "ChatGPT" / "app-1.2.3"
             codex = local_programs / "Codex" / "app-4.5.6"
-            for app_dir, name in ((chatgpt, "ChatGPT"), (codex, "Codex")):
+            for app_dir, name in (
+                (chatgpt, "ChatGPT Classic"),
+                (codex, "Codex"),
+            ):
                 (app_dir / "resources").mkdir(parents=True)
                 (app_dir / f"{name}.exe").write_bytes(b"exe")
                 (app_dir / "resources" / "app.asar").write_bytes(b"asar")
@@ -511,7 +514,10 @@ class WindowsApplicationTests(unittest.TestCase):
                 )
 
         self.assertEqual([item["name"] for item in apps], ["ChatGPT", "Codex"])
-        self.assertEqual(apps[0]["executable"], str(chatgpt / "ChatGPT.exe"))
+        self.assertEqual(
+            apps[0]["executable"],
+            str(chatgpt / "ChatGPT Classic.exe"),
+        )
         self.assertEqual(apps[1]["asar"], str(codex / "resources" / "app.asar"))
 
     def test_windows_detection_finds_openai_and_desktop_named_folders(self):
@@ -553,6 +559,10 @@ class WindowsApplicationTests(unittest.TestCase):
                 PLATFORM, "_windows_process_candidates", return_value=()
             ), mock.patch.object(
                 PLATFORM,
+                "_windows_appx_candidates",
+                return_value=(),
+            ), mock.patch.object(
+                PLATFORM,
                 "_windows_profile_roots",
                 return_value=[],
             ):
@@ -584,6 +594,10 @@ class WindowsApplicationTests(unittest.TestCase):
                 PLATFORM, "_windows_process_candidates", return_value=()
             ), mock.patch.object(
                 PLATFORM,
+                "_windows_appx_candidates",
+                return_value=(),
+            ), mock.patch.object(
+                PLATFORM,
                 "_windows_profile_roots",
                 return_value=[],
             ):
@@ -607,6 +621,10 @@ class WindowsApplicationTests(unittest.TestCase):
                 PLATFORM, "_windows_registry_candidates", return_value=()
             ), mock.patch.object(
                 PLATFORM, "_windows_process_candidates", return_value=(str(executable),)
+            ), mock.patch.object(
+                PLATFORM,
+                "_windows_appx_candidates",
+                return_value=(),
             ), mock.patch.object(
                 PLATFORM,
                 "_windows_profile_roots",

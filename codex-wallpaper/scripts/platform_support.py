@@ -68,6 +68,20 @@ def normalized_path_key(path):
     return os.path.normcase(resolved)
 
 
+def matching_application_name(stem):
+    """Return the canonical app name for an executable file stem."""
+    lowered = str(stem).lower()
+    for candidate in APPLICATION_NAMES:
+        candidate_lower = candidate.lower()
+        if lowered == candidate_lower:
+            return candidate
+        if lowered.startswith(candidate_lower + " "):
+            return candidate
+        if lowered.startswith(candidate_lower + "-"):
+            return candidate
+    return None
+
+
 def _windows_candidate_paths(base, name):
     base = pathlib.Path(base)
     roots = [
@@ -128,9 +142,8 @@ def _windows_candidate_paths(base, name):
                     for item in directories
                     if item.lower() not in WINDOWS_SEARCH_SKIP
                 ]
-            exact = f"{name}.exe".lower()
             for filename in files:
-                if filename.lower() == exact:
+                if matching_application_name(pathlib.Path(filename).stem) == name:
                     add(current_path / filename)
     return candidates
 
@@ -233,6 +246,49 @@ def _windows_registry_candidates():
 
 
 @functools.lru_cache(maxsize=1)
+def _windows_appx_candidates():
+    """Return executable paths declared by installed ChatGPT/Codex packages."""
+    if os.name != "nt":
+        return ()
+    powershell = shutil.which("powershell.exe") or shutil.which("powershell")
+    if not powershell:
+        return ()
+    command = (
+        "[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
+        "$packages = Get-AppxPackage | "
+        "Where-Object { $_.Name -match 'ChatGPT|Codex|OpenAI' }; "
+        "foreach ($package in $packages) { "
+        "try { "
+        "$manifest = Get-AppxPackageManifest $package; "
+        "foreach ($app in $manifest.Package.Applications.Application) { "
+        "$candidate = Join-Path $package.InstallLocation $app.Executable; "
+        "if (Test-Path $candidate) { Write-Output $candidate } "
+        "} "
+        "} catch {} "
+        "}"
+    )
+    try:
+        result = subprocess.run(
+            [powershell, "-NoProfile", "-Command", command],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ()
+    if result.returncode != 0:
+        return ()
+    return tuple(
+        line.strip()
+        for line in result.stdout.splitlines()
+        if line.strip()
+    )
+
+
+@functools.lru_cache(maxsize=1)
 def _windows_process_candidates():
     """Return executable paths for running ChatGPT/Codex processes."""
     if os.name != "nt":
@@ -241,7 +297,7 @@ def _windows_process_candidates():
     if not powershell:
         return ()
     command = (
-        "Get-Process -Name ChatGPT,Codex -ErrorAction SilentlyContinue | "
+        "Get-Process -Name ChatGPT*,Codex* -ErrorAction SilentlyContinue | "
         "ForEach-Object { $_.Path }"
     )
     try:
@@ -250,6 +306,8 @@ def _windows_process_candidates():
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=8,
         )
     except (OSError, subprocess.TimeoutExpired):
@@ -271,12 +329,7 @@ def application_from_path(app_path, platform_name=None):
     if is_windows(platform_name):
         if path.suffix.lower() != ".exe":
             return None
-        name = path.stem
-        matched = next(
-            (candidate for candidate in APPLICATION_NAMES
-             if name.lower() == candidate.lower()),
-            None,
-        )
+        matched = matching_application_name(path.stem)
         if matched is None:
             return None
         executable = path
@@ -387,6 +440,7 @@ def detect_applications(platform_name=None, env=None):
         if found:
             continue
         fallback = (
+            *_windows_appx_candidates(),
             *_windows_registry_candidates(),
             *_windows_process_candidates(),
         )

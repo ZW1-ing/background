@@ -375,7 +375,7 @@ def choose_app_path():
     command = (
         "Add-Type -AssemblyName System.Windows.Forms; "
         "$dialog = New-Object System.Windows.Forms.OpenFileDialog; "
-        "$dialog.Filter = 'ChatGPT 或 Codex (*.exe)|ChatGPT.exe;Codex.exe'; "
+        "$dialog.Filter = 'ChatGPT 或 Codex (*.exe)|ChatGPT*.exe;Codex*.exe'; "
         "$dialog.Title = '选择 ChatGPT.exe 或 Codex.exe'; "
         "if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) "
         "{ [Console]::Write($dialog.FileName) }"
