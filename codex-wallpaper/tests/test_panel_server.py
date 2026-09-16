@@ -114,6 +114,8 @@ class ApplyWiringTests(unittest.TestCase):
             ), mock.patch.object(
                 SERVER, "CONFIG_FILE", state_root / "config.json"
             ), mock.patch.object(
+                SERVER, "is_windows", return_value=False
+            ), mock.patch.object(
                 SERVER, "run_patcher", side_effect=fake_run_patcher
             ):
                 handler = SimpleNamespace(
@@ -161,7 +163,9 @@ class RestartAppTests(unittest.TestCase):
         )
         with mock.patch.object(
             SERVER.subprocess, "run", return_value=completed
-        ) as run:
+        ) as run, mock.patch.object(
+            SERVER, "is_windows", return_value=False
+        ):
             running = SERVER.app_is_running("/Applications/ChatGPT.app")
 
         self.assertTrue(running)
@@ -173,6 +177,8 @@ class RestartAppTests(unittest.TestCase):
     def test_restart_quits_then_reopens_chatgpt(self):
         completed = SimpleNamespace(returncode=0, stdout="", stderr="")
         with mock.patch.object(
+            SERVER, "is_windows", return_value=False
+        ), mock.patch.object(
             SERVER, "locate_app_path", return_value="/Applications/ChatGPT.app"
         ), mock.patch.object(
             SERVER, "app_is_running", side_effect=[True, False]

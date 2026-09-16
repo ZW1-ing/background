@@ -5,6 +5,7 @@ import pathlib
 import struct
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -95,12 +96,20 @@ class ApplyIntegrationTests(unittest.TestCase):
                 ],
             )
 
-            original_resign = PATCHER.resign
-            PATCHER.resign = lambda _app_path: True
-            try:
+            with mock.patch.object(
+                PATCHER,
+                "is_windows",
+                return_value=False,
+            ), mock.patch.object(
+                PATCHER,
+                "app_package_path",
+                return_value=str(asar_path),
+            ), mock.patch.object(
+                PATCHER,
+                "resign",
+                return_value=True,
+            ):
                 PATCHER.apply_wallpaper(str(app_path), str(image_path), config)
-            finally:
-                PATCHER.resign = original_resign
 
             html = read_archive_file(asar_path, "/webview/index.html")
             css = read_archive_file(asar_path, "/webview/assets/app.css")
