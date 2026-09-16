@@ -30,10 +30,10 @@ jobs:
         shell: bash
         run: |
           set +e
-          python -m unittest discover -s codex-wallpaper/tests -v > python-tests.log 2>&1
+          python -m unittest discover -s codex-wallpaper/tests > python-tests.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            message="$(tail -n 120 python-tests.log | tr '\n' '|' | tr '\r' ' ')"
+            message="$(tail -n 160 python-tests.log | tr '\n' '|' | tr '\r' ' ')"
             printf '::error title=Python tests::%s\n' "$message"
             cat python-tests.log
             exit "$status"

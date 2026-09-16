@@ -1,4 +1,5 @@
 import importlib.util
+import os
 import pathlib
 import tempfile
 import unittest
@@ -52,7 +53,10 @@ class PanelLauncherTests(unittest.TestCase):
         command = run.call_args.args[0]
         self.assertIn(str(ROOT / "panel" / "server.py"), command)
         self.assertEqual(command[-1], "--no-open")
-        self.assertTrue(run.call_args.kwargs["start_new_session"])
+        if os.name == "nt":
+            self.assertIn("creationflags", run.call_args.kwargs)
+        else:
+            self.assertTrue(run.call_args.kwargs["start_new_session"])
         open_browser.assert_called_once_with("http://127.0.0.1:8765/")
 
     def test_health_check_does_not_depend_on_application_detection(self):

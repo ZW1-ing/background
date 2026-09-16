@@ -422,7 +422,7 @@ def app_is_running(app_path):
         )
         return result.returncode == 0 and executable.lower() in result.stdout.lower()
     app_name = pathlib.Path(app_path).stem
-    executable = os.path.join(app_path, "Contents", "MacOS", app_name)
+    executable = str(pathlib.PurePosixPath(app_path) / "Contents" / "MacOS" / app_name)
     result = subprocess.run(
         ["/bin/ps", "-axo", "pid=,comm="],
         stdout=subprocess.PIPE,
