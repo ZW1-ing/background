@@ -22,9 +22,15 @@ jobs:
       - name: Install ChatGPT from Microsoft Store
         shell: pwsh
         run: |
-          winget install --id OpenAI.ChatGPT -e --source msstore `
+          $output = winget install --id OpenAI.ChatGPT -e --source msstore `
             --accept-package-agreements --accept-source-agreements `
-            --disable-interactivity
+            --disable-interactivity 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) {
+            $message = ($output -replace "\r?\n", " | ")
+            Write-Output "::error title=Winget install::$message"
+            exit 1
+          }
+          Write-Output $output
 
       - name: Copy Store app and verify it can start
         shell: pwsh
