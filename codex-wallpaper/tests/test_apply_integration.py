@@ -157,11 +157,11 @@ class ApplyIntegrationTests(unittest.TestCase):
                 asar_path,
                 [
                     (
-                        "/webview/index.html",
+                        "/.vite/renderer/main_window/index.html",
                         b"<html><head></head><body></body></html>",
                     ),
                     (
-                        "/webview/assets/app.css",
+                        "/.vite/renderer/main_window/assets/index.css",
                         b"body { color: black; }",
                     ),
                 ],
@@ -182,7 +182,10 @@ class ApplyIntegrationTests(unittest.TestCase):
                 PATCHER.is_windows = original_is_windows
                 PATCHER.app_package_path = original_package_path
 
-            html = read_archive_file(asar_path, "/webview/index.html")
+            html = read_archive_file(
+                asar_path,
+                "/.vite/renderer/main_window/index.html",
+            )
             self.assertIn(PATCHER.BACKGROUND_LAYER_ID, html)
 
 

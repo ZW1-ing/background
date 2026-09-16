@@ -734,6 +734,21 @@ def patch_css(data, block):
     return strip_block(data).rstrip(b"\n") + b"\n\n" + block
 
 
+def webview_asset_paths(by_path, extension):
+    """Return patchable HTML/CSS paths across legacy and Vite layouts."""
+    matches = sorted(
+        path for path in by_path
+        if path.lower().endswith(extension)
+    )
+    preferred = [
+        path for path in matches
+        if path.startswith("/webview/")
+        or path.startswith("/.vite/renderer/")
+        or "/renderer/" in path
+    ]
+    return preferred or matches
+
+
 # --------------------------------------------------------------------------
 # commands
 # --------------------------------------------------------------------------
@@ -906,24 +921,18 @@ def apply_wallpaper(
 
         overrides = {}
 
-        shells = sorted(
-            p for p in by_path
-            if p.startswith("/webview/") and p.endswith(".html")
-        )
+        shells = webview_asset_paths(by_path, ".html")
         if not shells:
-            print("No webview HTML shell found in the archive.")
+            print("No patchable HTML shell found in the archive.")
             sys.exit(1)
         config = normalize_config(config)
         block = shell_style(data_uri, config)
         for path in shells:
             overrides[path] = patch_html(raw_file(path), block)
 
-        css_files = sorted(
-            p for p in by_path
-            if p.startswith("/webview/") and p.endswith(".css")
-        )
+        css_files = webview_asset_paths(by_path, ".css")
         if not css_files:
-            print("No webview CSS files found in the archive.")
+            print("No patchable CSS files found in the archive.")
             sys.exit(1)
         css_block = css_payload(config)
         for path in css_files:

@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - ".github/workflows/windows-store-smoke.yml"
+      - "codex-wallpaper/scripts/codex_theme_patcher.py"
       - "codex-wallpaper/scripts/platform_support.py"
   workflow_dispatch:
 
