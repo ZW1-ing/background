@@ -178,6 +178,7 @@ class WindowsSafetyTests(unittest.TestCase):
 
         self.assertIsNotNone(app)
         self.assertFalse(app["canApply"])
+        self.assertTrue(app["copyable"])
         self.assertIn("Microsoft Store", app["patchabilityError"])
 
     def test_missing_python_compression_output_is_not_accepted_as_an_image(self):

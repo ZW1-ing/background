@@ -42,7 +42,10 @@ the command file again; it will restart or reuse the panel automatically.
 On Windows, double-click `open-control-panel.bat`. It requests UAC administrator
 permission and starts the same local panel in an independent process. The panel
 detects ChatGPT.exe and Codex.exe automatically and provides a file picker if
-detection misses an installation.
+detection misses an installation. If the only detected install is a protected
+Microsoft Store / WindowsApps package, the panel copies that app into
+`%LOCALAPPDATA%\codex-wallpaper\writable-apps` and patches the writable copy.
+The original Store install is not modified.
 
 The panel always lives at `http://127.0.0.1:8765`; it never silently moves to
 another port, so a bookmarked URL keeps working while the panel process is

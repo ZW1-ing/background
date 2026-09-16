@@ -5,6 +5,7 @@ import argparse
 import base64
 import binascii
 import dataclasses
+import hashlib
 import json
 import mimetypes
 import os
@@ -12,6 +13,7 @@ import pathlib
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import webbrowser
@@ -101,6 +103,100 @@ def write_json(path, value):
     os.replace(temp_path, path)
 
 
+def application_can_apply(application):
+    if not application:
+        return False
+    return bool(
+        application.get("canApply", True)
+        or application.get("copyable", False)
+    )
+
+
+def writable_app_copy_root():
+    if is_windows():
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            return (
+                pathlib.Path(local_app_data)
+                / "codex-wallpaper"
+                / "writable-apps"
+            )
+    return STATE_ROOT / "writable-apps"
+
+
+def writable_application_copy(application):
+    """Copy a protected Windows installation into a writable user directory."""
+    if not application or not application.get("copyable"):
+        raise ValueError("当前安装不支持自动副本。")
+    source_exe = pathlib.Path(application["executable"])
+    if not source_exe.is_file():
+        raise ValueError("找不到 Store 版应用文件，无法创建副本。")
+
+    source_dir = source_exe.parent
+    key = hashlib.sha256(str(source_dir).encode("utf-8")).hexdigest()[:12]
+    copy_root = writable_app_copy_root()
+    target_dir = copy_root / ("%s-%s" % (application["name"], key))
+    target_exe = target_dir / source_exe.name
+    target_asar = target_dir / "resources" / "app.asar"
+
+    if target_exe.is_file() and target_asar.is_file():
+        copied = application_from_path(str(target_exe), platform_name="win32")
+        if copied:
+            return copied, "Reusing writable app copy: %s" % target_dir
+        raise ValueError("已有自动副本无效，请删除后重试：%s" % target_dir)
+
+    copy_root.mkdir(parents=True, exist_ok=True)
+    temp_dir = pathlib.Path(
+        tempfile.mkdtemp(prefix=".copy-", dir=str(copy_root))
+    )
+    try:
+        shutil.copytree(
+            source_dir,
+            temp_dir,
+            dirs_exist_ok=True,
+            copy_function=shutil.copyfile,
+        )
+        copied = application_from_path(
+            str(temp_dir / source_exe.name),
+            platform_name="win32",
+        )
+        if not copied:
+            raise ValueError("复制后的应用结构不完整。")
+        write_json(
+            temp_dir / "codex-wallpaper-copy.json",
+            {
+                "sourceAppPath": application["executable"],
+                "sourceAsar": application.get("asar"),
+            },
+        )
+        if target_dir.exists():
+            shutil.rmtree(target_dir)
+        os.replace(temp_dir, target_dir)
+    finally:
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    copied = application_from_path(str(target_exe), platform_name="win32")
+    if not copied:
+        raise ValueError("自动副本创建后无法识别。")
+    return copied, "Created writable app copy: %s" % target_dir
+
+
+def prepare_windows_target(application):
+    if not (
+        is_windows()
+        and application
+        and application.get("canApply", True) is False
+    ):
+        return application, None
+    if not application.get("copyable"):
+        raise ValueError(
+            application.get("patchabilityError")
+            or "当前安装受系统保护，无法修改应用资源。"
+        )
+    return writable_application_copy(application)
+
+
 def current_image_path():
     for extension in MIME_EXTENSIONS.values():
         path = STATE_ROOT / ("current-image" + extension)
@@ -158,7 +254,7 @@ def status_payload():
         "platform": platform_name(),
         "applications": applications,
         "selectedApp": selected,
-        "canApply": bool(selected and selected.get("canApply", True)),
+        "canApply": application_can_apply(selected),
         "canChooseApp": True,
     }
 
@@ -176,13 +272,13 @@ def selected_application(state=None, applications=None):
     if selected_path:
         selected = validate_app_path(selected_path)
         if selected:
-            if selected.get("canApply", True):
+            if application_can_apply(selected):
                 return selected
             return next(
                 (
                     app
                     for app in applications
-                    if app.get("canApply", True)
+                    if application_can_apply(app)
                 ),
                 selected,
             )
@@ -196,7 +292,7 @@ def selected_application(state=None, applications=None):
         (
             app
             for app in applications
-            if app.get("canApply", True)
+            if application_can_apply(app)
         ),
         applications[0] if applications else None,
     )
@@ -503,16 +599,10 @@ class PanelHandler(BaseHTTPRequestHandler):
                 "没有找到可修改的 ChatGPT.exe 或 Codex.exe，请先选择应用。"
             )
 
-        selected = selected_application()
-        if (
-            is_windows()
-            and selected
-            and selected.get("canApply", True) is False
-        ):
-            raise ValueError(
-                selected.get("patchabilityError")
-                or "当前安装受系统保护，无法修改应用资源。"
-            )
+        source_application = selected_application()
+        selected, copy_message = prepare_windows_target(source_application)
+        if selected:
+            target = selected["executable"]
 
         image_data = body.pop("imageData", None)
         config = body.get("config")
@@ -537,8 +627,18 @@ class PanelHandler(BaseHTTPRequestHandler):
             "imagePath": str(image_path) if image_path else None,
         }
         previous_state = read_json(STATE_FILE, {})
-        if previous_state.get("appPath"):
+        if target:
+            state["appPath"] = target
+        elif previous_state.get("appPath"):
             state["appPath"] = previous_state["appPath"]
+        if (
+            source_application
+            and selected
+            and source_application.get("executable") != selected.get("executable")
+        ):
+            state["sourceAppPath"] = source_application["executable"]
+        elif previous_state.get("sourceAppPath"):
+            state["sourceAppPath"] = previous_state["sourceAppPath"]
         write_json(STATE_FILE, state)
 
         arguments = ["--config", str(CONFIG_FILE)]
@@ -546,7 +646,9 @@ class PanelHandler(BaseHTTPRequestHandler):
             arguments.extend(["--image", str(image_path)])
         if target:
             arguments = ["--app", target, *arguments]
-        return_code, output = run_patcher(arguments)
+        return_code, patcher_output = run_patcher(arguments)
+        output_parts = [part for part in (copy_message, patcher_output) if part]
+        output = "\n\n".join(output_parts)
         payload = {
             "ok": return_code == 0,
             "output": output,
@@ -569,10 +671,17 @@ class PanelHandler(BaseHTTPRequestHandler):
                 "没有找到可修改的 ChatGPT.exe 或 Codex.exe，请先选择应用。"
             )
 
+        source_application = selected_application()
+        selected, copy_message = prepare_windows_target(source_application)
+        if selected:
+            target = selected["executable"]
+
         arguments = ["--restore"]
         if target:
             arguments = ["--app", target, *arguments]
-        return_code, output = run_patcher(arguments)
+        return_code, patcher_output = run_patcher(arguments)
+        output_parts = [part for part in (copy_message, patcher_output) if part]
+        output = "\n\n".join(output_parts)
         payload = {
             "ok": return_code == 0,
             "output": output,

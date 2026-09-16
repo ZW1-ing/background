@@ -1,5 +1,15 @@
 # 更新日志
 
+## 1.1.5
+
+增加 Windows Microsoft Store / WindowsApps 版本的自动副本模式。
+
+- Store / MSIX 版本不再直接失败，控制面板会复制到
+  `%LOCALAPPDATA%\codex-wallpaper\writable-apps` 后修改副本。
+- 原始系统安装保持不变，不关闭安全保护，不绕过签名。
+- 应用和恢复操作自动切换到可写副本，后续修改继续使用副本。
+- 副本首次运行可能需要重新登录，Store 版升级后需要重新创建副本。
+
 ## 1.1.4
 
 改进 Windows 普通安装和 Microsoft Store 安装的区分。

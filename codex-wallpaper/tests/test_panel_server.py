@@ -247,6 +247,7 @@ class WindowsApplicationTests(unittest.TestCase):
             "patchabilityError": (
                 "Microsoft Store / WindowsApps 安装受系统保护，当前版本不支持修改。"
             ),
+            "copyable": False,
         }
         replies = []
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -256,6 +257,10 @@ class WindowsApplicationTests(unittest.TestCase):
                         SERVER, "STATE_FILE", state_root / "state.json"
                     ), mock.patch.object(
                         SERVER, "CONFIG_FILE", state_root / "config.json"
+                    ), mock.patch.object(
+                        SERVER,
+                        "writable_app_copy_root",
+                        return_value=state_root / "writable-apps",
                     ), mock.patch.object(
                         SERVER, "is_windows", return_value=True
                     ), mock.patch.object(
@@ -276,6 +281,80 @@ class WindowsApplicationTests(unittest.TestCase):
                     )
 
         run_patcher.assert_not_called()
+
+    def test_apply_store_target_prepares_writable_copy_before_patcher(self):
+        config = {"background": {}, "surfaces": {}}
+        calls = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = pathlib.Path(temp_dir)
+            state_root = root / "state"
+            source_app = (
+                root
+                / "WindowsApps"
+                / "OpenAI.Codex_1.0.0_x64__pkg"
+                / "app"
+            )
+            source_exe = source_app / "ChatGPT.exe"
+            source_asar = source_app / "resources" / "app.asar"
+            source_asar.parent.mkdir(parents=True)
+            source_exe.write_bytes(b"exe")
+            source_asar.write_bytes(b"asar")
+            selected = {
+                "name": "ChatGPT",
+                "executable": str(source_exe),
+                "asar": str(source_asar),
+                "canApply": False,
+                "copyable": True,
+                "patchabilityError": (
+                    "Microsoft Store / WindowsApps 安装受系统保护，"
+                    "当前版本不支持修改。"
+                ),
+            }
+
+            def fake_run_patcher(arguments):
+                calls.append(arguments)
+                return 0, "ok"
+
+            with mock.patch.object(SERVER, "STATE_ROOT", state_root), \
+                    mock.patch.object(
+                        SERVER, "STATE_FILE", state_root / "state.json"
+                    ), mock.patch.object(
+                        SERVER, "CONFIG_FILE", state_root / "config.json"
+                    ), mock.patch.object(
+                        SERVER, "is_windows", return_value=True
+                    ), mock.patch.object(
+                        SERVER, "locate_app_path", return_value=str(source_exe)
+                    ), mock.patch.object(
+                        SERVER, "selected_application", return_value=selected
+                    ), mock.patch.object(
+                        SERVER, "run_patcher", side_effect=fake_run_patcher
+                    ):
+                handler = SimpleNamespace(
+                    send_json=lambda payload, status=200: setattr(
+                        handler, "reply", (payload, status)
+                    )
+                )
+                SERVER.PanelHandler.apply_wallpaper(
+                    handler,
+                    {
+                        "imageName": "custom.png",
+                        "config": config,
+                    },
+                )
+
+            saved_state = json.loads(
+                (state_root / "state.json").read_text(encoding="utf-8")
+            )
+            copy_exe = pathlib.Path(saved_state["appPath"])
+            self.assertTrue(copy_exe.is_file())
+            self.assertTrue(
+                (copy_exe.parent / "resources" / "app.asar").is_file()
+            )
+            self.assertEqual(calls[0][:2], ["--app", str(copy_exe)])
+            self.assertEqual(
+                saved_state["sourceAppPath"],
+                str(source_exe),
+            )
 
     def test_windows_app_path_points_to_resources_asar_next_to_executable(self):
         with tempfile.TemporaryDirectory() as temp_dir:

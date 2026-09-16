@@ -289,11 +289,19 @@ def application_from_path(app_path, platform_name=None):
         patchability_error = windows_installation_issue(
             str(executable), platform_name
         )
+    copyable = bool(
+        patchability_error
+        and (
+            "Microsoft Store" in patchability_error
+            or "MSIX" in patchability_error
+        )
+    )
     return {
         "name": matched,
         "executable": str(executable if is_windows(platform_name) else path),
         "asar": str(asar),
         "canApply": patchability_error is None,
+        "copyable": copyable,
         "patchabilityError": patchability_error,
     }
 

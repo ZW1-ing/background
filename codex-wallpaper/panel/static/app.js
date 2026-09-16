@@ -182,15 +182,21 @@ function renderApplicationControls(state) {
 
   appSection.hidden = false;
   const selected = state.selectedApp;
-  const targetCanApply = Boolean(selected && selected.canApply !== false);
+  const targetCanApply = Boolean(
+    selected && (selected.canApply !== false || selected.copyable)
+  );
+  const usesWritableCopy = Boolean(
+    selected && selected.canApply === false && selected.copyable
+  );
   canApplyCurrentTarget = targetCanApply;
   appHelp.classList.toggle(
     "is-error",
-    Boolean(selected && selected.canApply === false)
+    Boolean(selected && selected.canApply === false && !selected.copyable)
   );
   if (selected && selected.canApply === false) {
-    appHelp.textContent =
-      selected.patchabilityError || "当前安装受系统保护，无法修改应用资源。";
+    appHelp.textContent = selected.copyable
+      ? "检测到 Microsoft Store 版。点击应用时会自动创建可修改副本，原应用不会被修改。"
+      : selected.patchabilityError || "当前安装受系统保护，无法修改应用资源。";
   } else {
     appHelp.textContent =
       state.platform === "Windows"
@@ -213,7 +219,12 @@ function renderApplicationControls(state) {
   }
 
   for (const application of applications) {
-    const unsupported = application.canApply === false ? "（不支持）" : "";
+    const unsupported =
+      application.canApply === false
+        ? application.copyable
+          ? "（自动副本）"
+          : "（不支持）"
+        : "";
     const option = new Option(
       `${application.name}${unsupported} · ${application.executable}`,
       application.executable
@@ -225,7 +236,9 @@ function renderApplicationControls(state) {
   }
   appTargetStatus.textContent = state.selectedApp
     ? targetCanApply
-      ? `当前使用 ${state.selectedApp.name}`
+      ? usesWritableCopy
+        ? `当前使用 ${state.selectedApp.name} Store 版，应用时自动复制`
+        : `当前使用 ${state.selectedApp.name}`
       : "当前目标不支持修改"
     : "请选择要修改的应用";
   applyButton.disabled = !canApplyCurrentTarget;

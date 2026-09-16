@@ -3,7 +3,7 @@
 给 macOS 和 Windows 上的 Codex / ChatGPT 桌面客户端换一张永久背景壁纸，带一个可视化控制面板：
 上传图片、拖动滑块调参数、点“应用背景”，界面就换好了。
 
-当前发布版本：`1.1.4`
+当前发布版本：`1.1.5`
 
 壁纸被写进 App 自身的资源包里，所以重启电脑、退出重开都还在，不依赖任何常驻插件或
 DevTools 注入。
@@ -15,8 +15,8 @@ DevTools 注入。
 从 [Releases](../../releases/latest) 按系统下载对应的最终使用包：
 
 ```text
-macOS:   codex-wallpaper-1.1.4-macos.zip
-Windows: codex-wallpaper-1.1.4-windows.zip
+macOS:   codex-wallpaper-1.1.5-macos.zip
+Windows: codex-wallpaper-1.1.5-windows.zip
 ```
 
 macOS 和 Windows 使用不同的独立安装包，每个包只包含当前系统的启动文件。
@@ -97,11 +97,15 @@ macOS 默认查找 `/Applications` 和 `~/Applications` 下的 `Codex.app`、`Ch
 Windows 默认查找常见的用户安装目录和程序目录，同时读取注册表安装信息和正在运行的
 ChatGPT/Codex 进程路径，兼容 `OpenAI\ChatGPT`、`Codex Desktop` 等目录命名。
 如果同时存在普通桌面版和 Microsoft Store 版，控制面板会优先选择可修改的普通版。
+如果只有 Microsoft Store / WindowsApps 版本，Windows 面板会把应用复制到
+`%LOCALAPPDATA%\codex-wallpaper\writable-apps`，然后修改这个可写副本。原始系统
+安装不会改动，副本首次运行时可能需要重新登录。
 如果应用安装在特殊目录，面板提供“选择应用”按钮；命令行也可以设置
 `CODEX_APP_PATH`。
 
 应用必须是普通桌面安装，并且 exe 旁边存在 `resources\app.asar`。受保护目录或
-Microsoft Store 版本可能拒绝修改，面板会显示具体错误，不要通过关闭系统安全功能绕过。
+Microsoft Store 版本会使用自动副本模式；如果系统仍然阻止副本启动，面板会显示具体错误，
+不要通过关闭系统安全功能绕过。
 
 ## 命令行用法
 
@@ -158,8 +162,8 @@ python3 -m unittest discover -s codex-wallpaper/tests -v
 产物在 `dist/`，包含 macOS、Windows 两个 zip 和各自对应的 `sha256` 校验文件：
 
 ```text
-codex-wallpaper-1.1.4-macos.zip
-codex-wallpaper-1.1.4-windows.zip
+codex-wallpaper-1.1.5-macos.zip
+codex-wallpaper-1.1.5-windows.zip
 ```
 
 ## 许可
