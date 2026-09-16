@@ -1,0 +1,87 @@
+name: Windows Store app smoke test
+
+on:
+  push:
+    paths:
+      - ".github/workflows/windows-store-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install ChatGPT from Microsoft Store
+        shell: pwsh
+        run: |
+          winget install --id OpenAI.ChatGPT -e --source msstore `
+            --accept-package-agreements --accept-source-agreements `
+            --disable-interactivity
+
+      - name: Copy Store app and verify it can start
+        shell: pwsh
+        run: |
+          $package = Get-AppxPackage |
+            Where-Object { $_.Name -match 'ChatGPT|OpenAI' } |
+            Sort-Object Version -Descending |
+            Select-Object -First 1
+          if (-not $package) {
+            throw "Microsoft Store ChatGPT package was not installed."
+          }
+          $exe = Get-ChildItem -Path $package.InstallLocation `
+            -Recurse -Filter ChatGPT.exe -ErrorAction Stop |
+            Select-Object -First 1
+          if (-not $exe) {
+            throw "ChatGPT.exe was not found in $($package.InstallLocation)."
+          }
+
+          $copyRoot = Join-Path $env:LOCALAPPDATA `
+            "codex-wallpaper\writable-apps\ci-smoke"
+          if (Test-Path $copyRoot) {
+            Remove-Item -Recurse -Force $copyRoot
+          }
+          New-Item -ItemType Directory -Path $copyRoot | Out-Null
+          robocopy $exe.DirectoryName $copyRoot /E /R:2 /W:2 | Out-Null
+          if ($LASTEXITCODE -ge 8) {
+            throw "Could not copy the Store app. robocopy exit code: $LASTEXITCODE"
+          }
+
+          $copyExe = Join-Path $copyRoot $exe.Name
+          $process = Start-Process -FilePath $copyExe -PassThru
+          Start-Sleep -Seconds 12
+          if ($process.HasExited) {
+            throw "The unmodified Store app copy exited with code $($process.ExitCode)."
+          }
+          Stop-Process -Id $process.Id -Force
+          Write-Output "Unmodified Store app copy started successfully."
+          "SMOKE_CHATGPT_EXE=$copyExe" |
+            Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Apply wallpaper to the Store app copy
+        shell: pwsh
+        run: |
+          $copyExe = $env:SMOKE_CHATGPT_EXE
+          if (-not $copyExe) {
+            throw "The copied ChatGPT.exe path was not available."
+          }
+          $env:PYTHONIOENCODING = "utf-8"
+          python .\codex-wallpaper\scripts\codex_theme_patcher.py `
+            --app $copyExe `
+            --image .\codex-wallpaper\assets\default-wallpaper.jpg `
+            --allow-unknown-windows
+
+          $process = Start-Process -FilePath $copyExe -PassThru
+          Start-Sleep -Seconds 12
+          if ($process.HasExited) {
+            throw "The patched Store app copy exited with code $($process.ExitCode)."
+          }
+          Stop-Process -Id $process.Id -Force
+          Write-Output "Patched Store app copy started successfully."
