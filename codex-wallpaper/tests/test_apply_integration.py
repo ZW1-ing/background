@@ -118,6 +118,64 @@ class ApplyIntegrationTests(unittest.TestCase):
             self.assertIn(b"--codex-wallpaper-composer-opacity: 0.56", css)
             self.assertIn(b"--codex-wallpaper-dialog-opacity: 0.78", css)
 
+    def test_apply_patches_marked_windows_copy_without_electron_marker(self):
+        config = {
+            "background": {
+                "zoom": 1.0,
+                "position_x": 0.5,
+                "position_y": 0.5,
+                "dim": 0.0,
+                "blur": 0,
+            },
+            "surfaces": {
+                "main": 0.35,
+                "sidebar": 0.45,
+                "composer": 0.45,
+                "dialog": 0.6,
+            },
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = pathlib.Path(temp_dir)
+            copy_root = root / "writable-apps"
+            app_path = copy_root / "ChatGPT-copy"
+            executable = app_path / "ChatGPT.exe"
+            asar_path = app_path / "resources" / "app.asar"
+            image_path = root / "upload.png"
+            app_path.mkdir(parents=True)
+            executable.write_bytes(b"MZ synthetic Windows executable")
+            image_path.write_bytes(b"test-image-bytes")
+            build_asar(
+                asar_path,
+                [
+                    (
+                        "/webview/index.html",
+                        b"<html><head></head><body></body></html>",
+                    ),
+                    (
+                        "/webview/assets/app.css",
+                        b"body { color: black; }",
+                    ),
+                ],
+            )
+
+            original_is_windows = PATCHER.is_windows
+            original_package_path = PATCHER.app_package_path
+            PATCHER.is_windows = lambda: True
+            PATCHER.app_package_path = lambda _app_path: str(asar_path)
+            try:
+                PATCHER.apply_wallpaper(
+                    str(executable),
+                    str(image_path),
+                    config,
+                    allow_unknown_windows=True,
+                )
+            finally:
+                PATCHER.is_windows = original_is_windows
+                PATCHER.app_package_path = original_package_path
+
+            html = read_archive_file(asar_path, "/webview/index.html")
+            self.assertIn(PATCHER.BACKGROUND_LAYER_ID, html)
+
 
 if __name__ == "__main__":
     unittest.main()

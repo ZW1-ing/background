@@ -410,7 +410,7 @@ def windows_installation_issue(exe_path, platform_name=None):
     return None
 
 
-def ensure_windows_patchable(exe_path):
+def ensure_windows_patchable(exe_path, allow_unknown=False):
     """Reject protected or unknown Electron Windows installations.
 
     This deliberately refuses to modify binaries whose Electron fuse wire
@@ -429,6 +429,8 @@ def ensure_windows_patchable(exe_path):
         raise ValueError("无法读取目标应用程序: %s" % exc) from exc
     marker = data.find(sentinel)
     if marker < 0:
+        if allow_unknown:
+            return
         raise ValueError(
             "无法确认这是可修改的 Electron 桌面安装，已停止保护性操作。"
         )

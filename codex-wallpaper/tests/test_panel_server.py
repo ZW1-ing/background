@@ -351,10 +351,120 @@ class WindowsApplicationTests(unittest.TestCase):
                 (copy_exe.parent / "resources" / "app.asar").is_file()
             )
             self.assertEqual(calls[0][:2], ["--app", str(copy_exe)])
+            self.assertIn("--allow-unknown-windows", calls[0])
             self.assertEqual(
                 saved_state["sourceAppPath"],
                 str(source_exe),
             )
+
+    def test_reused_panel_copy_still_passes_allow_unknown_windows(self):
+        config = {"background": {}, "surfaces": {}}
+        calls = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = pathlib.Path(temp_dir)
+            state_root = root / "state"
+            copy_root = root / "writable-apps"
+            copy_app = copy_root / "ChatGPT-existing"
+            copy_exe = copy_app / "ChatGPT.exe"
+            copy_asar = copy_app / "resources" / "app.asar"
+            copy_asar.parent.mkdir(parents=True)
+            copy_exe.write_bytes(b"exe")
+            copy_asar.write_bytes(b"asar")
+            (copy_app / "codex-wallpaper-copy.json").write_text(
+                json.dumps(
+                    {
+                        "sourceAppPath": (
+                            r"C:\Program Files\WindowsApps\ChatGPT.exe"
+                        )
+                    }
+                ),
+                encoding="utf-8",
+            )
+            state_root.mkdir(parents=True)
+            (state_root / "state.json").write_text(
+                json.dumps({"appPath": str(copy_exe)}),
+                encoding="utf-8",
+            )
+            selected = PLATFORM.application_from_path(
+                str(copy_exe),
+                platform_name="win32",
+            )
+            self.assertIsNotNone(selected)
+            self.assertTrue(selected["canApply"])
+
+            def fake_run_patcher(arguments):
+                calls.append(arguments)
+                return 0, "ok"
+
+            with mock.patch.object(SERVER, "STATE_ROOT", state_root), \
+                    mock.patch.object(
+                        SERVER, "STATE_FILE", state_root / "state.json"
+                    ), mock.patch.object(
+                        SERVER, "CONFIG_FILE", state_root / "config.json"
+                    ), mock.patch.object(
+                        SERVER,
+                        "writable_app_copy_root",
+                        return_value=copy_root,
+                    ), mock.patch.object(
+                        SERVER, "is_windows", return_value=True
+                    ), mock.patch.object(
+                        SERVER, "locate_app_path", return_value=str(copy_exe)
+                    ), mock.patch.object(
+                        SERVER, "selected_application", return_value=selected
+                    ), mock.patch.object(
+                        SERVER, "run_patcher", side_effect=fake_run_patcher
+                    ):
+                handler = SimpleNamespace(
+                    send_json=lambda payload, status=200: setattr(
+                        handler, "reply", (payload, status)
+                    )
+                )
+                SERVER.PanelHandler.apply_wallpaper(
+                    handler,
+                    {
+                        "imageName": "custom.png",
+                        "config": config,
+                    },
+                )
+
+        self.assertEqual(calls[0][:2], ["--app", str(copy_exe)])
+        self.assertIn("--allow-unknown-windows", calls[0])
+
+    def test_unmarked_copy_is_not_treated_as_a_panel_writable_copy(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = pathlib.Path(temp_dir)
+            copy_root = root / "writable-apps"
+            unmarked = copy_root / "ChatGPT-unmarked"
+            marked = copy_root / "ChatGPT-marked"
+            for app_dir in (unmarked, marked):
+                (app_dir / "resources").mkdir(parents=True)
+                (app_dir / "ChatGPT.exe").write_bytes(b"exe")
+                (app_dir / "resources" / "app.asar").write_bytes(b"asar")
+            (marked / "codex-wallpaper-copy.json").write_text(
+                "{}",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(
+                SERVER,
+                "writable_app_copy_root",
+                return_value=copy_root,
+            ):
+                unmarked_app = PLATFORM.application_from_path(
+                    str(unmarked / "ChatGPT.exe"),
+                    platform_name="win32",
+                )
+                marked_app = PLATFORM.application_from_path(
+                    str(marked / "ChatGPT.exe"),
+                    platform_name="win32",
+                )
+
+                self.assertFalse(
+                    SERVER.is_writable_application_copy(unmarked_app)
+                )
+                self.assertTrue(
+                    SERVER.is_writable_application_copy(marked_app)
+                )
 
     def test_windows_app_path_points_to_resources_asar_next_to_executable(self):
         with tempfile.TemporaryDirectory() as temp_dir:

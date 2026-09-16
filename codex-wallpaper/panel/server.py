@@ -124,6 +124,28 @@ def writable_app_copy_root():
     return STATE_ROOT / "writable-apps"
 
 
+def is_writable_application_copy(application):
+    """Return whether an app is a marked copy created by this panel."""
+    if not application:
+        return False
+    executable = pathlib.Path(application["executable"]).expanduser()
+    try:
+        executable.resolve().relative_to(
+            writable_app_copy_root().expanduser().resolve()
+        )
+    except (OSError, ValueError):
+        return False
+    return (executable.parent / "codex-wallpaper-copy.json").is_file()
+
+
+def mark_writable_application_copy(application):
+    if not is_writable_application_copy(application):
+        return application
+    marked = dict(application)
+    marked["isWritableCopy"] = True
+    return marked
+
+
 def writable_application_copy(application):
     """Copy a protected Windows installation into a writable user directory."""
     if not application or not application.get("copyable"):
@@ -142,6 +164,7 @@ def writable_application_copy(application):
     if target_exe.is_file() and target_asar.is_file():
         copied = application_from_path(str(target_exe), platform_name="win32")
         if copied:
+            copied = mark_writable_application_copy(copied)
             return copied, "Reusing writable app copy: %s" % target_dir
         raise ValueError("已有自动副本无效，请删除后重试：%s" % target_dir)
 
@@ -179,10 +202,12 @@ def writable_application_copy(application):
     copied = application_from_path(str(target_exe), platform_name="win32")
     if not copied:
         raise ValueError("自动副本创建后无法识别。")
+    copied = mark_writable_application_copy(copied)
     return copied, "Created writable app copy: %s" % target_dir
 
 
 def prepare_windows_target(application):
+    application = mark_writable_application_copy(application)
     if not (
         is_windows()
         and application
@@ -644,6 +669,8 @@ class PanelHandler(BaseHTTPRequestHandler):
         arguments = ["--config", str(CONFIG_FILE)]
         if image_path is not None:
             arguments.extend(["--image", str(image_path)])
+        if selected and selected.get("isWritableCopy"):
+            arguments.append("--allow-unknown-windows")
         if target:
             arguments = ["--app", target, *arguments]
         return_code, patcher_output = run_patcher(arguments)
@@ -677,6 +704,8 @@ class PanelHandler(BaseHTTPRequestHandler):
             target = selected["executable"]
 
         arguments = ["--restore"]
+        if selected and selected.get("isWritableCopy"):
+            arguments.append("--allow-unknown-windows")
         if target:
             arguments = ["--app", target, *arguments]
         return_code, patcher_output = run_patcher(arguments)

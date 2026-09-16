@@ -45,7 +45,8 @@ detects ChatGPT.exe and Codex.exe automatically and provides a file picker if
 detection misses an installation. If the only detected install is a protected
 Microsoft Store / WindowsApps package, the panel copies that app into
 `%LOCALAPPDATA%\codex-wallpaper\writable-apps` and patches the writable copy.
-The original Store install is not modified.
+The original Store install is not modified. A marker file inside that copy
+keeps later apply and restore operations pointed at the same writable copy.
 
 The panel always lives at `http://127.0.0.1:8765`; it never silently moves to
 another port, so a bookmarked URL keeps working while the panel process is

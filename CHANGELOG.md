@@ -1,5 +1,15 @@
 # 更新日志
 
+## 1.1.6
+
+修复 Windows Microsoft Store / WindowsApps 自动副本的后续应用问题。
+
+- 副本创建后写入 `codex-wallpaper-copy.json` 标记文件。
+- 面板重新读取已保存副本时仍会识别为受控可写副本。
+- 第二次及后续点击“应用背景”会继续传递副本专用放行参数，不再重复触发
+  Electron 标记校验错误。
+- 增加副本复用、未标记副本保护和 Windows CI 回归测试。
+
 ## 1.1.5
 
 增加 Windows Microsoft Store / WindowsApps 版本的自动副本模式。

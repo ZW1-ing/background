@@ -821,9 +821,14 @@ def update_plist_integrity(app_path, header_bytes):
         print("Note: could not update ElectronAsarIntegrity (not fatal).")
 
 
-def apply_wallpaper(app_path, image_path, config):
+def apply_wallpaper(
+    app_path, image_path, config, allow_unknown_windows=False
+):
     if is_windows():
-        ensure_windows_patchable(app_path)
+        ensure_windows_patchable(
+            app_path,
+            allow_unknown=allow_unknown_windows,
+        )
     asar_path = app_package_path(app_path)
     res_dir = os.path.dirname(asar_path)
     bak_path = asar_path + ".bak"
@@ -938,9 +943,12 @@ def apply_wallpaper(app_path, image_path, config):
     print("Quit the app completely and reopen it to see the wallpaper.")
 
 
-def restore(app_path):
+def restore(app_path, allow_unknown_windows=False):
     if is_windows():
-        ensure_windows_patchable(app_path)
+        ensure_windows_patchable(
+            app_path,
+            allow_unknown=allow_unknown_windows,
+        )
     asar_path = app_package_path(app_path)
     bak_path = asar_path + ".bak"
     if not os.path.exists(bak_path):
@@ -1004,6 +1012,11 @@ def main():
     )
     parser.add_argument("--restore", action="store_true", help="restore the official appearance")
     parser.add_argument("--status", action="store_true", help="show patch state and exit")
+    parser.add_argument(
+        "--allow-unknown-windows",
+        action="store_true",
+        help="allow patching a control-panel-created Windows app copy",
+    )
     args = parser.parse_args()
 
     app_path = locate_app(args.app)
@@ -1021,7 +1034,10 @@ def main():
         return
 
     if args.restore:
-        restore(app_path)
+        restore(
+            app_path,
+            allow_unknown_windows=args.allow_unknown_windows,
+        )
         return
 
     if args.opacity is not None and not 0.0 <= args.opacity <= 1.0:
@@ -1041,7 +1057,12 @@ def main():
     if args.opacity is not None:
         config["surfaces"]["main"] = args.opacity
 
-    apply_wallpaper(app_path, image_path, config)
+    apply_wallpaper(
+        app_path,
+        image_path,
+        config,
+        allow_unknown_windows=args.allow_unknown_windows,
+    )
 
 
 if __name__ == "__main__":
